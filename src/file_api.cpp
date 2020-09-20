@@ -31,9 +31,6 @@ DEBUGReadEntireFile(const char *Filename)
         fclose(File);
     }
     
-    // TODO(vincent): I'm pretty much not doing anything if an error happens
-    // for malloc(), fopen(), fread()...
-    
     return Result;
 }
 
@@ -59,7 +56,67 @@ DEBUGReadEntireFileInto(char *Filename, char *Buffer)
         fclose(File);
     }
     
-    // TODO(vincent): error checking ?
+    return Result;
+}
+
+
+struct safer_read_file_result
+{
+    size_t Size;
+    b32 Success;
+};
+
+internal safer_read_file_result
+SaferReadEntireFileInto(char *Dest, char *Filename, u32 AvailableSize)
+{
+    safer_read_file_result Result = {};
+    FILE *File = fopen(Filename, "rb");
+    if (File)
+    {
+        fseek(File, 0, SEEK_END);
+        size_t FileSize = ftell(File);
+        fseek(File, 0, SEEK_SET);
+        if (FileSize <= AvailableSize)
+        {
+            size_t BytesWritten = fread(Dest, 1, FileSize, File);
+            if (BytesWritten == FileSize)
+            {
+                Result.Size = FileSize;
+                Result.Success = true;
+            }
+        }
+        fclose(File);
+    }
+    
+    return Result;
+}
+
+struct push_read_entire_file
+{
+    char *Memory;
+    size_t Size;
+    b32 Success;
+};
+internal push_read_entire_file
+PushReadEntireFile(memory_arena *Arena, char *Filename)
+{
+    push_read_entire_file Result = {};
+    
+    FILE *File = fopen(Filename, "rb");
+    if (File)
+    {
+        fseek(File, 0, SEEK_END);
+        Result.Size = ftell(File);
+        fseek(File, 0, SEEK_SET);
+        u32 AvailableSize = Arena->Size - Arena->Used;
+        if (Result.Size <= AvailableSize)
+        {
+            Result.Memory = PushArray(Arena, Result.Size, char);
+            size_t BytesWritten = fread(Result.Memory, 1, Result.Size, File);
+            if (BytesWritten == Result.Size)
+                Result.Success = true;
+        }
+    }
     return Result;
 }
 

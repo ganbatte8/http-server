@@ -2,8 +2,8 @@
 struct parsed_config_file_result
 {
     u32 Port;
-    char PortString[6];   // the actual port used by Windows and Linux, it looks like.
-    char Root[256];
+    char PortString[6];   // the actual port used by Windows and Linux, it looks like
+    char Root[65535];
     b32 PortSet;
     b32 RootSet;
 };

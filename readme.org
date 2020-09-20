@@ -1,6 +1,6 @@
 * This project
   This is a simple web server implemented in C-style C++, no libraries.
-  Target platforms are Linux and Windows. (May also work on other Unix platforms, untested)
+  Target platforms are Linux and Windows. There is a chance the Linux port also works on other Unix platforms.
 
 * How to compile
 ** Windows
@@ -34,48 +34,60 @@ C:\WINDOWS\system32\cmd.exe /k "your\path\to\shell.bat"
 #+END_SRC
 so that opening a terminal through this shortcut will automatically execute the shell.bat script.
 
-** Linux (and Unix ?)
+** Linux
 You need to have the gcc compiler installed.
 Once that is done, compiling the program should be as simple as
 #+BEGIN_SRC bash
 cd src
 ./build.sh
 #+END_SRC
-If successful, this will create the executable into the build folder.
+If successful, that will create the executable into the build folder.
 
 Sometimes you may not have the execution right on the build.sh file. In that case, try: 
 #+BEGIN_SRC bash
 chmod +x build.sh
 #+END_SRC
-before running build.sh
+before running build.sh.
      
 
 * How to run the server
 Once the program is compiled, run the executable file in the build folder from a terminal.
-The executable should be either called server_win32.exe (for Windows) or server_linux (for Linux/Unix).
+The executable should be either called server_win32.exe (for Windows) or server_linux (for Linux).
+When you run the executable, it first tries to parse the config file located in the same folder as the
+ executable, so that it retrieves a port number and the root folder path of your websites to host.
+If successful, you should then be able to have your website show up in a browser.
+For example, if you set the port to 3490, and you have an index.html file in your root website folder,
+you should be able to display it in a web browser by typing the URL:
+#+BEGIN_SRC
+localhost:3490/index.html
+#+END_SRC
+
+
    
 
-* Things to do
-- Mention that you can enter localhost:18000 or whatever port the user has set.
-- What should make up our platform-independent code ?
-
+* Should be done
 - Handle GET request in HTTP/1.x, ignore the others methods like PUT, etc.
 - Correctly display the given websites
 - should be able to handle connections in parallel (e.g. 1 thread = 1 connection ?)
-- good doc and comments
 - stdout log: caller's IP + request
-- should be able to host several domain names
-
-- should protect a resource if it contains a .htpasswd file
-  that file contains lines in the form    username:password_in_md5
 - externalize config in a properties file
   root folder where to put the websites, TCP port (80 by default)
+- make sure there is no blocking (disk I/O or listening to network) call inside of the server loop
+  that is not handled in a parallel way. (producer/consumer ?)
+  NOTE: Currently, main thread is only blocked by accept(). Other threads are "blocked" by file reads.
+
+* Not done yet
+- good doc and comments
+- should be able to host several domain names (multisite)
+- should protect a folder if it contains a .htpasswd file
+  that file contains lines in the form    username:password_in_md5
 
 - implement one of these bonus functionalities:
   - handle server-side includes (#include, #exec)
   - generate dynamic content with an external program (php/python/node)
-  - handle folders listing (config should allow disabling this)
+  - handle folders listing (config should allow the user to disable this)
   - compress js and css resources in gzip
 
-- make sure there is no blocking (disk I/O or listening to network) call inside of the server loop
-  that is not handled in a parallel way. (producer/consumer ?)
+
+
+

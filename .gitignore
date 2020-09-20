@@ -2,3 +2,4 @@ build/*.pdb
 build/*.obj
 build/*.exe
 build/server_linux
+src/scratch

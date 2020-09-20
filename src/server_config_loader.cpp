@@ -297,8 +297,18 @@ ParseConfigFile(parsed_config_file_result *Result)
                 case ConfigTokenType_String: 
                 if (LastType == ConfigTokenType_Root)
                 {
-                    sprintf(Result->Root, "%.*s", 
-                            Minimum(T.Lexeme.Length, ArrayCount(Result->Root)-1), T.Lexeme.Base); 
+                    u32 PrintedCount = sprintf(Result->Root, "%.*s", 
+                                               Minimum(T.Lexeme.Length, ArrayCount(Result->Root)-1), 
+                                               T.Lexeme.Base);
+                    
+                    
+                    // Remove ending slash if there is one, so that we can prefix
+                    // this with http request paths easily.
+                    if (Result->Root[PrintedCount-1] == '/')
+                    {
+                        Result->Root[PrintedCount-1] = 0;
+                    }
+                    
                     Result->RootSet = true;
                 }
                 break;
@@ -334,5 +344,5 @@ ParseConfigFile(parsed_config_file_result *Result)
     }
     
     free(ReadFileResult.Content);
-    return Scanner.ErrorCount;  // TODO(vincent): signal whether successful or not ?
+    return Scanner.ErrorCount;
 }
