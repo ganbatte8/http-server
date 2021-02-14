@@ -16,28 +16,38 @@ The path to this file will probably look like this:
 Once you've run the vcvarsall.bat file, then _in that shell session_, 
 you should be able to run the build.bat file contained in the source folder, from the terminal. 
 That will compile the program into the build folder.
+#+BEGIN_SRC bat
+cd src
+build.bat
+#+END_SRC
 
-To automate this process of running vcvarsall for development, 
+To automate this process of running vcvarsall.bat for development, 
 you can make a shell.bat file that contains this instruction:
 #+BEGIN_SRC bat
 call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x64
 #+END_SRC
-Then make a shortcut to the Windows cmd program: 
+Then make a shortcut to the Windows cmd program:
 modify the properties of the shortcut via right click -> properties,
 setting the shortcut target field to:
-=C:\WINDOWS\system32\cmd.exe /k "your\path\to\shell.bat"=
+#+BEGIN_SRC 
+C:\WINDOWS\system32\cmd.exe /k "your\path\to\shell.bat"
+#+END_SRC
 so that opening a terminal through this shortcut will automatically execute the shell.bat script.
 
 ** Linux (and Unix ?)
 You need to have the gcc compiler installed.
-Once that is done, run the build.sh file contained in the src folder.
-If successful, it will compile the executable into the build folder.
+Once that is done, compiling the program should be as simple as
+#+BEGIN_SRC bash
+cd src
+./build.sh
+#+END_SRC
+If successful, this will create the executable into the build folder.
 
 Sometimes you may not have the execution right on the build.sh file. In that case, try: 
 #+BEGIN_SRC bash
 chmod +x build.sh
 #+END_SRC
-before running build.sh.
+before running build.sh
      
 
 * How to run the server
@@ -47,10 +57,9 @@ The executable should be either called server_win32.exe (for Windows) or server_
 
 * Things to do
 - Mention that you can enter localhost:18000 or whatever port the user has set.
-- Make sure the Linux thing actually compiles again.
 - What should make up our platform-independent code ?
 
-- Handle GET request in HTTP/1.x
+- Handle GET request in HTTP/1.x, ignore the others methods like PUT, etc.
 - Correctly display the given websites
 - should be able to handle connections in parallel (e.g. 1 thread = 1 connection ?)
 - good doc and comments

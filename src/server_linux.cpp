@@ -13,12 +13,10 @@
 
 #include "common.h"
 
-#define SERVER_PORT "3490"  // the port users will be connecting to
-
 #define BACKLOG 10   // how many pending connections queue will hold
 
-
-void sigchld_handler(int s)
+internal void
+sigchld_handler(int s)
 {
     // waitpid() might overwrite errno, so we save and restore it:
     int saved_errno = errno;
@@ -27,7 +25,8 @@ void sigchld_handler(int s)
 }
 
 // get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa)
+internal void*
+get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
         return &(((struct sockaddr_in*)sa)->sin_addr);
@@ -47,6 +46,7 @@ int main(void)
     char AddressString[INET6_ADDRSTRLEN];
     int AddressInfoResult;
     char ReceiveBuffer[2048];
+    char ReceiveBufferHex[3*ArrayCount(ReceiveBuffer)+1];
     memset(&Hints, 0, sizeof Hints);
     Hints.ai_family = AF_UNSPEC;
     Hints.ai_socktype = SOCK_STREAM;
@@ -127,13 +127,11 @@ int main(void)
                   AddressString, sizeof AddressString);
         printf("server: got connection from %s\n", AddressString);
         
-        // TODO(vincent): try a read() or recv() loop on the newsocket before answering with
-        // http.
         int BytesReceived;
         while ((BytesReceived = recv(NewSocket, ReceiveBuffer, 2048, 0)) > 0)
         {
             printf("BytesReceived:%d\n", BytesReceived);
-            printf("\n%s\n\n%s", bin2hex(ReceiveBuffer, BytesReceived), ReceiveBuffer);
+            printf("\n%s\n\n%s", BinaryToHexadecimal(ReceiveBuffer, ReceiveBufferHex, BytesReceived), ReceiveBuffer);
             // TODO(vincent): probably wanna check for null-termination if we are gonna print
             // the ReceiveBuffer
             // NOTE(vincent): detect the end of the http request to send back an answer.

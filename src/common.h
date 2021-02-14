@@ -1,5 +1,9 @@
 #include <stdint.h>
 
+#define SERVER_PORT "3490"  // the port users will be connecting to
+// TODO(vincent): make sure this works on all platforms. I think there's a string/integer duality
+
+
 #define internal static
 
 #define Kilobytes(Value) ((Value) * 1000LL)
@@ -81,7 +85,7 @@ PushSize_(memory_arena *Arena, u32 Size)
 
 
 internal void
-WriteStringLiteral(char *Buffer, char *Literal)
+WriteStringLiteral(char *Buffer, const char *Literal)
 {
     // NOTE(vincent): Buffer is assumed to be big enough.
     while (*Literal)
@@ -110,8 +114,6 @@ ReverseBytes(char *Buffer, u32 Size)
         Buffer[Index] = Buffer[Size-1-Index];
     }
 }
-
-
 
 internal char*
 BinaryToHexadecimal(char *Source, char *Dest, size_t SourceLength)

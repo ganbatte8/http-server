@@ -40,8 +40,8 @@ DEBUGReadEntireFile(char *Filename)
 }
 
 // NOTE(vincent): ReadEntireFileInto is the same as ReadEntireFile, except it doesn't malloc
-// and writes into a pointer parameter instead. This is probably more like what I want for
-// loading inputs.
+// and writes into a pointer parameter instead.
+
 internal debug_read_file_result
 DEBUGReadEntireFileInto(char *Filename, char *Buffer)
 {
@@ -83,14 +83,3 @@ DEBUGWriteEntireFile(char *Filename, u32 Size, void *Memory)
     // TODO(vincent): error checking ?
     return Result;
 }
-
-
-internal void
-WriteStringLiteral(char *Buffer, char *Literal)
-{
-    // NOTE(vincent): Literal is assumed to be null-terminated, and Buffer is assumed to be big enough.
-    while (*Literal)
-        *Buffer++ = *Literal++;
-    *Buffer = 0;
-}
-

@@ -8,8 +8,6 @@
 #include "common.h"
 #pragma comment(lib, "Ws2_32.lib")
 
-#define DEFAULT_PORT "18000"
-
 
 int main() 
 {
@@ -37,7 +35,7 @@ int main()
     Hints.ai_flags = AI_PASSIVE;
     
     // Resolve the local address and port to be used by the server
-    int GetaddrinfoResult = getaddrinfo(0, DEFAULT_PORT, &Hints, &AddressInfo);
+    int GetaddrinfoResult = getaddrinfo(0, SERVER_PORT, &Hints, &AddressInfo);
     if (GetaddrinfoResult != 0) 
     {
         printf("getaddrinfo failed: %d\n", GetaddrinfoResult);
@@ -96,7 +94,7 @@ int main()
         // main accept() loop
         
         // Accept a client socket
-        printf("Server: waiting for a connection on port %s\n", DEFAULT_PORT);
+        printf("Server: waiting for a connection on port %s\n", SERVER_PORT);
         SOCKET ClientSocket = INVALID_SOCKET;
         ClientSocket = accept(ListenSocket, 0, 0);
         if (ClientSocket == INVALID_SOCKET) {
