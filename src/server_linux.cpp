@@ -15,6 +15,9 @@
 
 #define BACKLOG 10   // how many pending connections queue will hold
 
+#define INVALID_SOCKET -1  // this helps for platform-independent code compatibility with Windows
+typedef int SOCKET // same
+
 internal void
 sigchld_handler(int s)
 {
@@ -24,16 +27,6 @@ sigchld_handler(int s)
     errno = saved_errno;
 }
 
-// get sockaddr, IPv4 or IPv6:
-internal void*
-get_in_addr(struct sockaddr *sa)
-{
-    if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-    
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
 
 int main(void)
 {
@@ -123,25 +116,9 @@ int main(void)
             continue;
         }
         
-        inet_ntop(TheirAddress.ss_family, get_in_addr((struct sockaddr *)&TheirAddress),
-                  AddressString, sizeof AddressString);
-        printf("server: got connection from %s\n", AddressString);
-        
-        int BytesReceived;
-        while ((BytesReceived = recv(NewSocket, ReceiveBuffer, 2048, 0)) > 0)
-        {
-            printf("BytesReceived:%d\n", BytesReceived);
-            printf("\n%s\n\n%s", BinaryToHexadecimal(ReceiveBuffer, ReceiveBufferHex, BytesReceived), ReceiveBuffer);
-            // TODO(vincent): probably wanna check for null-termination if we are gonna print
-            // the ReceiveBuffer
-            // NOTE(vincent): detect the end of the http request to send back an answer.
-            // If we don't do this, we will get stuck on a recv() waiting for some answer that
-            // the browser will not give.
-            // TODO(vincent): do this in a less hacky way (should expect \r\n\r\n I think)
-            if (ReceiveBuffer[BytesReceived-1] == '\n')
-                break;
-            // TODO(vincent): should we reset the buffer to zeroes?
-        }
+        int BytesReceived = HandleConnection((struct sockaddr *)&TheirAddress,
+                                             ReceiveBuffer, ArrayCount(ReceiveBuffer),
+                                             ReceiveBufferHex, ArrayCount(ReceiveBufferHex));
         
         if (BytesReceived < 0)
         {

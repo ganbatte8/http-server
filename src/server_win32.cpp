@@ -6,6 +6,7 @@
 #include <ws2tcpip.h>
 #include <stdio.h>
 #include "common.h"
+#include "server.cpp"
 #pragma comment(lib, "Ws2_32.lib")
 
 
@@ -16,7 +17,6 @@ int main()
     
     // NOTE(vincent): initialize the Windows Sockets DLL
     WSADATA WSAData;
-    
     int Result = WSAStartup(MAKEWORD(2,2), &WSAData);
     if (Result != 0)
     {
@@ -27,7 +27,6 @@ int main()
     struct addrinfo *AddressInfo = 0; 
     //struct addrinfo *Pointer = 0;        // TODO(vincent): when do we actually use this ??? 
     struct addrinfo Hints;
-    
     ZeroBytes((char *)&Hints, sizeof(Hints));
     Hints.ai_family = AF_INET;           // IPv4. TODO(vincent): handle IPv6 as well
     Hints.ai_socktype = SOCK_STREAM;
@@ -81,7 +80,6 @@ int main()
 #define DEFAULT_BUFFER_LENGTH 2048
     char ReceiveBuffer[DEFAULT_BUFFER_LENGTH];
     char ReceiveBufferHex[3*DEFAULT_BUFFER_LENGTH+1];
-    int ReceiveBufferLength = DEFAULT_BUFFER_LENGTH;
     
     char SendBuffer[512];
     WriteStringLiteral(SendBuffer, "HTTP/1.0 200 OK\r\n\r\nHello");
@@ -89,6 +87,8 @@ int main()
     
     // Receive until the peer shuts down the connection
     b32 ServerIsRunning = true;
+    struct sockaddr_storage TheirAddress; // connector's address information
+    int SizeTheirAddress = sizeof(TheirAddress);
     while (ServerIsRunning)
     {
         // main accept() loop
@@ -96,31 +96,19 @@ int main()
         // Accept a client socket
         printf("Server: waiting for a connection on port %s\n", SERVER_PORT);
         SOCKET ClientSocket = INVALID_SOCKET;
-        ClientSocket = accept(ListenSocket, 0, 0);
-        if (ClientSocket == INVALID_SOCKET) {
+        ClientSocket = accept(ListenSocket, (struct sockaddr *)&TheirAddress, &SizeTheirAddress);
+        
+        if (ClientSocket == INVALID_SOCKET) 
+        {
             printf("accept failed: %d\n", WSAGetLastError());
             closesocket(ListenSocket);
             WSACleanup();
             return 1;
         }
         
-        // TODO(vincent): can we print the incoming address on Windows ?
-        printf("Server: got connection\n");
-        
-        int BytesReceived;
-        while ((BytesReceived = recv(ClientSocket, ReceiveBuffer, ReceiveBufferLength, 0)) > 0)
-        {
-            printf("BytesReceived: %d\n", BytesReceived);
-            BinaryToHexadecimal(ReceiveBuffer, ReceiveBufferHex, BytesReceived);
-            printf("\n%s\n\n%s", ReceiveBufferHex, ReceiveBuffer);
-            // TODO(vincent): check for null-termination?
-            // TODO(vincent): parse HTTP requests here ? \r\n thing
-            if (ReceiveBuffer[BytesReceived-1] == '\n')
-            {
-                break;
-            }
-            // TODO(vincent): should we reset the buffer to zeroes?
-        }
+        int BytesReceived = HandleConnection((struct sockaddr *)&TheirAddress, ClientSocket,
+                                             ReceiveBuffer, ArrayCount(ReceiveBuffer),
+                                             ReceiveBufferHex);
         
         if (BytesReceived < 0)
         {
@@ -142,11 +130,10 @@ int main()
         
         printf("BytesSent: %d\n", BytesSent);
         
-        
-        
         // shutdown the send half of the connection since no more data will be sent
         int ShutdownResult = shutdown(ClientSocket, SD_SEND);
-        if (ShutdownResult == SOCKET_ERROR) {
+        if (ShutdownResult == SOCKET_ERROR) 
+        {
             printf("shutdown failed: %d\n", WSAGetLastError());
             closesocket(ClientSocket);
             WSACleanup();

@@ -41,3 +41,43 @@ ParseHTTPRequest(char *ReceivedRequest, u32 RequestLength)
     
     return Result;
 }
+
+
+internal int
+HandleConnection(struct sockaddr *IncomingAddress, SOCKET ClientSocket,
+                 char *ReceiveBuffer, u32 ReceiveBufferLength,
+                 char *ReceiveBufferHex)
+{
+    //int SizeTheirAddress = sizeof(*IncomingAddress);
+    char AddressString[INET6_ADDRSTRLEN];
+    inet_ntop(IncomingAddress->sa_family, GetInternetAddress(IncomingAddress),
+              AddressString, sizeof(AddressString));
+    
+    printf("Server: got connection from %s\n", AddressString);
+    
+    int BytesReceived;
+    for (;;)
+    {
+        BytesReceived = recv(ClientSocket, ReceiveBuffer, ReceiveBufferLength, 0);
+        if (BytesReceived <= 0 || BytesReceived == INVALID_SOCKET)
+            break;
+        
+        printf("BytesReceived: %d\n", BytesReceived);
+        BinaryToHexadecimal(ReceiveBuffer, ReceiveBufferHex, BytesReceived);
+        printf("\n%s\n\n%s", ReceiveBufferHex, ReceiveBuffer);
+        // TODO(vincent): check for null-termination?
+        // TODO(vincent): parse HTTP requests here ? \r\n thing
+        if (ReceiveBuffer[BytesReceived-1] == '\n')
+        {
+            break;
+        }
+        // TODO(vincent): should we reset the buffer to zeroes?
+    }
+    
+    
+    //ParseHTTPRequest(ReceiveBuffer);
+    
+    
+    
+    return BytesReceived;
+}
