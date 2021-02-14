@@ -1,0 +1,68 @@
+* This project
+  This is a simple web server implemented in C-style C++, no libraries.
+  Target platforms are Linux and Windows. (May also work on other Unix platforms, untested)
+
+* How to compile
+  ** Windows
+     We use Microsoft's C/C++ compiler MSVC. 
+     You can install Microsoft's compiler by installing Visual Studio.
+     The community edition should work fine.
+     Once you've installed Visual Studio, launch a terminal.
+     You want to look for the vcvarsall.bat file and run it with the argument x64
+     (if you want to use the 64-bit compiler).
+     The path to this file will probably look like this:
+     C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat
+     
+     Once you've run the vcvarsall.bat file, then _in that shell session_, 
+     you should be able to run the build.bat file contained in the source folder, from the terminal. 
+     That will compile the program into the build folder.
+
+     To automate this process of running vcvarsall for development, 
+     you can make a shell.bat file that contains this instruction:
+     call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x64
+     Then make a shortcut to the Windows cmd program: 
+     Modify the properties of the shortcut via right click -> properties,
+     setting the shortcut target field to:
+     C:\WINDOWS\system32\cmd.exe /k "your\path\to\shell.bat" 
+     so that opening a terminal through this shortcut will automatically execute the shell.bat script.
+
+  ** Linux (and Unix ?)
+     You need to have the gcc compiler installed.
+     Once that is done, run the build.sh file contained in the src folder.
+     If successful, it will compile the executable into the build folder.
+
+     Sometimes you may not have the execution right on the build.sh file. In that case, try: 
+     chmod +x build.sh
+     before running build.sh.
+     
+
+* How to run the server
+   Once the program is compiled, run the executable file in the build folder from a terminal.
+   The executable should be either called server_win32.exe (for Windows) or server_linux (for Linux/Unix).
+   
+
+* Things to do
+   - Mention that you can enter localhost:18000 or whatever port the user has set.
+   - Make sure the Linux thing actually compiles again.
+   - What should make up our platform-independent code ?
+   
+   - Handle GET request in HTTP/1.x
+   - Correctly display the given websites
+   - should be able to handle connections in parallel (e.g. 1 thread = 1 connection ?)
+   - good doc and comments
+   - stdout log: caller's IP + request
+   - should be able to host several domain names
+   
+   - should protect a resource if it contains a .htpasswd file
+     that file contains lines in the form    username:password_in_md5
+   - externalize config in a properties file
+     root folder where to put the websites, TCP port (80 by default)
+
+   - implement one of these bonus functionalities:
+     - handle server-side includes (#include, #exec)
+     - generate dynamic content with an external program (php/python/node)
+     - handle folders listing (config should allow disabling this)
+     - compress js and css resources in gzip
+   
+   - make sure there is no blocking (I/O or listening to network) call inside of the server loop
+     that is not handled in a parallel way. (producer/consumer ?)
