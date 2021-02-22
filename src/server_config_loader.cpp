@@ -16,6 +16,7 @@ AddToken(read_file_result Source, scanner_location *Scanner, parsed_config_token
     {
         case ConfigTokenType_String: Token.Lexeme = Hint.String; break;
         case ConfigTokenType_Integer: Token.Value = Hint.Value; break;
+        default: break;
     }
     
     if (T->Count < ArrayCount(T->Tokens))
@@ -25,7 +26,12 @@ AddToken(read_file_result Source, scanner_location *Scanner, parsed_config_token
     }
     else
     {
-        fprintf(stderr, "Scanning error: too many tokens. (Max is %llu)\n", ArrayCount(T->Tokens));
+#if COMPILER_MSVC
+        fprintf(stderr, "Scanning error: too many tokens. (Max is %llu)\n", ArrayCount(T->Tokens)); 
+#else
+        fprintf(stderr, "Scanning error: too many tokens. (Max is %lu)\n", ArrayCount(T->Tokens)); 
+#endif
+        // TODO(vincent): g++ wants %lu, MSVC wants %llu... Is there a better way to handle this ?
         Scanner->ErrorCount++;
     }
 }

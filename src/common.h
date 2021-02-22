@@ -8,6 +8,27 @@
 // TODO(vincent): make sure this works on all platforms. I think there's a string/integer duality
 
 
+#if !defined(COMPILER_MSVC)
+#define COMPILER_MSVC 0
+#endif
+
+#if !defined(COMPILER_GCC)
+#define COMPILER_GCC 0
+#endif
+
+#if !defined(COMPILER_LLVM)
+#define COMPILER_LLVM 0
+#endif
+
+#if !COMPILER_MSVC && !COMPILER_GCC && !COMPILER_LLVM
+#if _MSC_VER
+#undef COMPILER_MSVC
+#define COMPILER_MSVC 1
+#else
+// not sure how to do this for gcc
+#endif
+#endif
+
 #define internal static
 
 #define Kilobytes(Value) ((Value) * 1000LL)
@@ -153,7 +174,7 @@ GetInternetAddress(struct sockaddr *sa)
 }
 
 internal b32
-StringsAreEqual(string A, char *B)
+StringsAreEqual(string A, const char *B)
 {
     u32 Count = 0;
     while (Count < A.Length && *B)

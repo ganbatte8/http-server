@@ -12,11 +12,13 @@
 #include <signal.h>
 
 #include "common.h"
-
 #define BACKLOG 10         // how many pending connections the queue will hold
 
 #define INVALID_SOCKET -1  // this helps for platform-independent code compatibility with Windows
-typedef int SOCKET         // same
+
+typedef int SOCKET;         // same
+
+#include "server.cpp"
 
 internal void
 sigchld_handler(int s)
@@ -30,13 +32,13 @@ sigchld_handler(int s)
 
 int main(void)
 {
-    int Socket, NewSocket;  // listen on Socket, new connection on NewSocket
+    int Socket, ClientSocket;  // listen on Socket, new connection on NewSocket
     struct addrinfo Hints, *ServerInfo, *P;
     struct sockaddr_storage TheirAddress; // connector's address information
     socklen_t SinSize;
     struct sigaction SignalAction;
     int One = 1;
-    char AddressString[INET6_ADDRSTRLEN];
+    //char AddressString[INET6_ADDRSTRLEN];
     int AddressInfoResult;
     char ReceiveBuffer[2048];
     char ReceiveBufferHex[3*ArrayCount(ReceiveBuffer)+1];
@@ -113,16 +115,16 @@ int main(void)
         printf("server: waiting for a connection on port %s\n", ParsedConfig.PortString);
         
         SinSize = sizeof TheirAddress;
-        NewSocket = accept(Socket, (struct sockaddr *)&TheirAddress, &SinSize);
+        ClientSocket = accept(Socket, (struct sockaddr *)&TheirAddress, &SinSize);
         if (Socket == -1) 
         {
             perror("accept");
             continue;
         }
         
-        int BytesReceived = HandleConnection((struct sockaddr *)&TheirAddress,
+        int BytesReceived = HandleConnection((struct sockaddr *)&TheirAddress, ClientSocket,
                                              ReceiveBuffer, ArrayCount(ReceiveBuffer),
-                                             ReceiveBufferHex, ArrayCount(ReceiveBufferHex));
+                                             ReceiveBufferHex);
         
         if (BytesReceived < 0)
         {
@@ -131,7 +133,7 @@ int main(void)
         }
         
         int BytesSent;
-        if ((BytesSent = send(NewSocket, SendBuffer, SendBufferLength, 0)) == -1)
+        if ((BytesSent = send(ClientSocket, SendBuffer, SendBufferLength, 0)) == -1)
             perror("send");
         printf("BytesSent: %d\n", BytesSent);
         /*
@@ -139,10 +141,10 @@ int main(void)
         { 
             // this is the child process
             close(Socket); // child doesn't need the listener
-            close(NewSocket);
+            close(ClientSocket);
             exit(0);
         }*/
-        close(NewSocket);  // parent doesn't need this
+        close(ClientSocket);  // parent doesn't need this
     }
     
     return 0;

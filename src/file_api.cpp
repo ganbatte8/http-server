@@ -13,9 +13,9 @@ struct read_file_result
 };
 
 internal read_file_result
-DEBUGReadEntireFile(char *Filename)
+DEBUGReadEntireFile(const char *Filename)
 {
-    read_file_result Result = {0};
+    read_file_result Result = {};
     FILE *File = fopen(Filename, "rb");
     if (File)
     {
