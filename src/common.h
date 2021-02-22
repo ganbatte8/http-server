@@ -1,6 +1,10 @@
 #include <stdint.h>
+#include <stdio.h>
+#include <malloc.h>
 
-#define SERVER_PORT "3490"  // the port users will be connecting to
+
+
+#define DEFAULT_SERVER_PORT "80"  // the port users will be connecting to
 // TODO(vincent): make sure this works on all platforms. I think there's a string/integer duality
 
 
@@ -41,6 +45,12 @@ struct memory_arena
     u32 Size;
     u8 *Base;
     u32 Used;
+};
+
+struct string
+{
+    char *Base;
+    u32 Length;
 };
 
 inline void
@@ -141,3 +151,55 @@ GetInternetAddress(struct sockaddr *sa)
     
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
+
+internal b32
+StringsAreEqual(string A, char *B)
+{
+    u32 Count = 0;
+    while (Count < A.Length && *B)
+    {
+        if (A.Base[Count] != *B)
+            return false;
+        B++;
+        Count++;
+    }
+    return (*B == 0 && Count == A.Length);
+}
+
+internal u32
+Minimum(u32 A, u32 B)
+{
+    if (A < B)
+        return A;
+    return B;
+}
+
+internal void
+IntegerToString(u32 Integer, char *Buffer)
+{
+    // NOTE(vincent): Buffer is assumed to be big enough to contain the integer, 
+    // plus a null-terminating character.
+    
+    // writing the bytes:
+    char *C = Buffer;
+    
+    do {                               // notice how this handles the case Integer == 0
+        *C++ = (Integer % 10) + '0';
+        Integer /= 10;
+    } while (Integer > 0);
+    *C = 0;
+    
+    // reversing the bytes:
+    C--;
+    while (C > Buffer)
+    {
+        char Temp = *C;
+        *C = *Buffer;
+        *Buffer = Temp;
+        
+        Buffer++;
+        C--;
+    }
+}
+
+#include "file_api.cpp"

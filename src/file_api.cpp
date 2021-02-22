@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <malloc.h>
 
 internal void
 DEBUGFreeFileMemory(void *Content)
@@ -8,23 +6,23 @@ DEBUGFreeFileMemory(void *Content)
         free(Content);
 }
 
-struct debug_read_file_result
+struct read_file_result
 {
     size_t Size;
-    void *Content;
+    char *Content;
 };
 
-internal debug_read_file_result
+internal read_file_result
 DEBUGReadEntireFile(char *Filename)
 {
-    debug_read_file_result Result = {};
+    read_file_result Result = {0};
     FILE *File = fopen(Filename, "rb");
     if (File)
     {
         fseek(File, 0, SEEK_END);
         size_t FileSize = ftell(File);
         fseek(File, 0, SEEK_SET);
-        Result.Content = malloc(FileSize);
+        Result.Content = (char *)malloc(FileSize);
         Result.Size = FileSize;
         if (Result.Content)
         {
@@ -42,10 +40,10 @@ DEBUGReadEntireFile(char *Filename)
 // NOTE(vincent): ReadEntireFileInto is the same as ReadEntireFile, except it doesn't malloc
 // and writes into a pointer parameter instead.
 
-internal debug_read_file_result
+internal read_file_result
 DEBUGReadEntireFileInto(char *Filename, char *Buffer)
 {
-    debug_read_file_result Result = {};
+    read_file_result Result = {};
     FILE *File = fopen(Filename, "rb");
     if (File)
     {

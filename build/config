@@ -1,0 +1,7 @@
+// This config file should specify the server's port number
+// and the root folder of websites to host. Example:
+// port:80
+// root:"websites"
+
+port:3490
+root:"websites"

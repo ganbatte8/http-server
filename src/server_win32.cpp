@@ -15,6 +15,14 @@ int main()
     // NOTE(vincent): This is basically following the instructions on MSDN to set up a TCP server:
     // https://docs.microsoft.com/en-us/windows/win32/winsock/winsock-server-applicationup
     
+    //void *ServerMemory = malloc(Megabytes(64));
+    //InitializeServerMemory();
+    parsed_config_file_result ParsedConfig = {};
+    sprintf(ParsedConfig.PortString, DEFAULT_SERVER_PORT);
+    ParseConfigFile(&ParsedConfig);
+    
+    
+    
     // NOTE(vincent): initialize the Windows Sockets DLL
     WSADATA WSAData;
     int Result = WSAStartup(MAKEWORD(2,2), &WSAData);
@@ -34,7 +42,7 @@ int main()
     Hints.ai_flags = AI_PASSIVE;
     
     // Resolve the local address and port to be used by the server
-    int GetaddrinfoResult = getaddrinfo(0, SERVER_PORT, &Hints, &AddressInfo);
+    int GetaddrinfoResult = getaddrinfo(0, ParsedConfig.PortString, &Hints, &AddressInfo);
     if (GetaddrinfoResult != 0) 
     {
         printf("getaddrinfo failed: %d\n", GetaddrinfoResult);
@@ -89,12 +97,13 @@ int main()
     b32 ServerIsRunning = true;
     struct sockaddr_storage TheirAddress; // connector's address information
     int SizeTheirAddress = sizeof(TheirAddress);
+    printf("Server: waiting for a connection on port %s\n", ParsedConfig.PortString);
     while (ServerIsRunning)
     {
         // main accept() loop
         
         // Accept a client socket
-        printf("Server: waiting for a connection on port %s\n", SERVER_PORT);
+        
         SOCKET ClientSocket = INVALID_SOCKET;
         ClientSocket = accept(ListenSocket, (struct sockaddr *)&TheirAddress, &SizeTheirAddress);
         
@@ -128,8 +137,9 @@ int main()
             return 1;
         }
         
+#if 0
         printf("BytesSent: %d\n", BytesSent);
-        
+#endif
         // shutdown the send half of the connection since no more data will be sent
         int ShutdownResult = shutdown(ClientSocket, SD_SEND);
         if (ShutdownResult == SOCKET_ERROR) 

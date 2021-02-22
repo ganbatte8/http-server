@@ -13,10 +13,10 @@
 
 #include "common.h"
 
-#define BACKLOG 10   // how many pending connections queue will hold
+#define BACKLOG 10         // how many pending connections the queue will hold
 
 #define INVALID_SOCKET -1  // this helps for platform-independent code compatibility with Windows
-typedef int SOCKET // same
+typedef int SOCKET         // same
 
 internal void
 sigchld_handler(int s)
@@ -45,7 +45,11 @@ int main(void)
     Hints.ai_socktype = SOCK_STREAM;
     Hints.ai_flags = AI_PASSIVE; // use my IP
     
-    if ((AddressInfoResult = getaddrinfo(NULL, SERVER_PORT, &Hints, &ServerInfo)) != 0) 
+    parsed_config_file_result ParsedConfig = {};
+    sprintf(ParsedConfig.PortString, DEFAULT_SERVER_PORT);
+    ParseConfigFile(&ParsedConfig);
+    
+    if ((AddressInfoResult = getaddrinfo(NULL, ParsedConfig.PortString, &Hints, &ServerInfo)) != 0) 
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(AddressInfoResult));
         return 1;
@@ -103,10 +107,10 @@ int main(void)
     WriteStringLiteral(SendBuffer, "HTTP/1.0 200 OK\r\n\r\nHello");
     int SendBufferLength = StringLength(SendBuffer);
     
-    while(1) 
+    for(;;)
     {  
         // main accept() loop
-        printf("server: waiting for a connection on port %s\n", SERVER_PORT);
+        printf("server: waiting for a connection on port %s\n", ParsedConfig.PortString);
         
         SinSize = sizeof TheirAddress;
         NewSocket = accept(Socket, (struct sockaddr *)&TheirAddress, &SinSize);
