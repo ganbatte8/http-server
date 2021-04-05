@@ -277,7 +277,7 @@ int main()
             PrepareHandshaking(&ServerMemory, (struct sockaddr *)&TheirAddress, ClientSocket, &Queue);
         }
         
-        WSACleanup();
+        //WSACleanup(); // TODO(vincent): Do we ever need to call this anywhere?
     }
     return 0;
 }

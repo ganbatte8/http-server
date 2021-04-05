@@ -111,7 +111,7 @@ PushReadEntireFile(memory_arena *Arena, char *Filename)
         u32 AvailableSize = Arena->Size - Arena->Used;
         if (Result.Size <= AvailableSize)
         {
-            Result.Memory = PushArray(Arena, Result.Size, char);
+            Result.Memory = PushArray(Arena, (u32)Result.Size, char);
             size_t BytesWritten = fread(Result.Memory, 1, Result.Size, File);
             if (BytesWritten == Result.Size)
                 Result.Success = true;

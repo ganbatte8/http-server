@@ -244,7 +244,7 @@ StringFromLiteral(const char *Base)
     Result.Base = (char *)Base;
     while (*Base)
         Base++;
-    Result.Length = Base - Result.Base;
+    Result.Length = (u32)(Base - Result.Base);
     return Result;
 }
 

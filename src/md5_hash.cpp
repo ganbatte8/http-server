@@ -137,38 +137,6 @@ MD5(u8 *Source, u32 MessageLength)
     return State;
 }
 
-internal void
-TestMD5()
-{
-    char Buffer[1000] = {};
-    u32 Length1 = sizeof("The quick brown fox jumps over the lazy dog")-1;
-    SprintNoNull(Buffer, "The quick brown fox jumps over the lazy dog");
-    
-    md5_result Result1 = MD5((u8*)Buffer, Length1);
-    
-    u32 Length2 = sizeof("The quick brown fox jumps over the lazy dog.")-1;
-    SprintNoNull(Buffer, "The quick brown fox jumps over the lazy dog.");
-    md5_result Result2 = MD5((u8*)Buffer, Length2);
-    
-    md5_result Result3 = MD5((u8*)Buffer, 0);  // MD5 on the empty string
-    
-    // we are expecting to have these bytes in memory order for Result1:
-    // 9e 10 7d 9d   37 2b b6 82   6b d8 1d 35   42 a4 19 d6
-    Assert(Result1.a == ReverseBytesU32(0x9e107d9d) && 
-           Result1.b == ReverseBytesU32(0x372bb682) &&
-           Result1.c == ReverseBytesU32(0x6bd81d35) &&
-           Result1.d == ReverseBytesU32(0x42a419d6));
-    
-    Assert(Result2.a == ReverseBytesU32(0xe4d909c2) && 
-           Result2.b == ReverseBytesU32(0x90d0fb1c) && 
-           Result2.c == ReverseBytesU32(0xa068ffad) && 
-           Result2.d == ReverseBytesU32(0xdf22cbd0));
-    
-    Assert(Result3.a == ReverseBytesU32(0xd41d8cd9) && 
-           Result3.b == ReverseBytesU32(0x8f00b204) && 
-           Result3.c == ReverseBytesU32(0xe9800998) && 
-           Result3.d == ReverseBytesU32(0xecf8427e));
-}
 
 internal void
 PrintMD5NoNull(char *Dest, md5_result Hash)
@@ -188,6 +156,40 @@ PrintMD5NoNull(char *Dest, md5_result Hash)
         *Dest++ = HighChar;
         *Dest++ = LowChar;
     }
+}
+
+internal void
+TestMD5()
+{
+    char Buffer[1000] = {};
+    
+    string String[4];
+    string ExpectedHash[4];
+    md5_result Hash[4];
+    b32 Success[4] = {};
+    
+    String[0]       = StringFromLiteral("user");
+    ExpectedHash[0] = StringFromLiteral("ee11cbb19052e40b07aac0ca060c23ee");
+    String[1]       = StringFromLiteral("The quick brown fox jumps over the lazy dog");
+    ExpectedHash[1] = StringFromLiteral("9e107d9d372bb6826bd81d3542a419d6");
+    String[2]       = StringFromLiteral("The quick brown fox jumps over the lazy dog.");
+    ExpectedHash[2] = StringFromLiteral("e4d909c290d0fb1ca068ffaddf22cbd0");
+    String[3]       = {};
+    ExpectedHash[3] = StringFromLiteral("d41d8cd98f00b204e9800998ecf8427e");
+    
+    for (u32 StringIndex = 0; StringIndex < ArrayCount(String); StringIndex++)
+    {
+        Sprint(Buffer, String[StringIndex]);
+        Hash[StringIndex] = MD5((u8 *)Buffer, String[StringIndex].Length);
+        PrintMD5NoNull(Buffer, Hash[StringIndex]);
+        string HashString = StringBaseLength(Buffer, 32);
+        if (StringsAreEqual(HashString, ExpectedHash[StringIndex]))
+            Success[StringIndex] = true;
+    }
+    
+    for (u32 SuccessIndex = 0; SuccessIndex < ArrayCount(Success); SuccessIndex++)
+        Assert(Success[SuccessIndex]);
+    
 }
 
 internal char
@@ -228,8 +230,9 @@ AsciiToSextet(char C)
 internal void
 ToBase64(char *Source, char *Dest, u32 SourceLength)
 {
-    // TODO(vincent): We probably won't actually use base64 encoding, only decoding I think.
-    // TODO(vincent): This is untested
+    // NOTE(vincent): This is untested, probably buggy and not actually useful for our use case.
+    // We are only using base 64 decoding so far, we don't need to encode in base64.
+    // I just wrote this as a way to learn how base 64 works. 
     
     u32 ByteOffset = 0;
     u32 DestOffset = 0;
@@ -321,38 +324,36 @@ FromBase64(string Source, char *Dest)
         // Basically, PadFreeSize could be 0 or 1, and at that point it probably doesn't matter
         // what we write to the dest buffer, but we shouldn't crash.
         
-#if 0
         switch (PadFreeSize)
         {
             case 4:
             {
-#endif
-                u8 OutputA = (Decoded[0] << 2) | (Decoded[1] >> 6);
+                u8 OutputA = (Decoded[0] << 2) | (Decoded[1] >> 4);
                 u8 OutputB = (Decoded[1] << 4) | (Decoded[2] >> 2);
                 u8 OutputC = (Decoded[2] << 6) | Decoded[3];
                 DestPtr[0] = OutputA;
                 DestPtr[1] = OutputB;
                 DestPtr[2] = OutputC;
-#if 0
+                Result.Length += 3;
             } break;
             case 3:
             {
-                u8 OutputA = (Decoded[0] << 2) | (Decoded[1] >> 6);
+                u8 OutputA = (Decoded[0] << 2) | (Decoded[1] >> 4);
                 u8 OutputB = (Decoded[1] << 4) | (Decoded[2] >> 2);
                 DestPtr[0] = OutputA;
                 DestPtr[1] = OutputB;
+                Result.Length += 2;
             } break;
             case 2:
             {
-                u8 OutputA = (Decoded[0] << 2) | (Decoded[1] >> 6);
+                u8 OutputA = (Decoded[0] << 2) | (Decoded[1] >> 4);
                 DestPtr[0] = OutputA;
+                Result.Length += 1;
             } break;
             default:
             {
             }
         }
-#endif
-        Result.Length += PadFreeSize;
         ReadCount += ChunkSize;
     }
     
@@ -370,5 +371,12 @@ TestFromBase64()
     string Decoded = FromBase64(Encoded, Dest);
     
     Assert(StringsAreEqual(UserUser, Decoded));
+    
+    string Jojo = StringFromLiteral("jojo no kimyouna bouken");
+    string Encoded2 = StringFromLiteral("am9qbyBubyBraW15b3VuYSBib3VrZW4=");
+    string Decoded2 = FromBase64(Encoded2, Dest);
+    
+    Assert(StringsAreEqual(Jojo, Decoded2));
+    
     
 }

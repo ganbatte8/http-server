@@ -102,16 +102,23 @@ DecodeAuthString(memory_arena *Arena, string AuthString)
     
     char *Dest = PushArray(Arena, AuthString.Length + 72, char);
     
+    ZeroBytes(Dest, AuthString.Length + 72);  
+    // TODO(vincent): This seems to fix a bug with MD5 where it produces undesired hashes on
+    // subsequent memory reuse, but it shouldn't be necessary since MD5() should be producing the padding
+    // for itself. What is happening here?
+    
     string Plain = FromBase64(AuthString, Dest);  // this should be less bytes than the source
     
     printf("Plain : ");
     PrintString(Plain);
     printf("\n");
+    Assert(StringsAreEqual(Plain, "user:user"));
     
     string PasswordPart = StringSuffixAfter(Plain, ':');
     
     printf("PasswordPart (%d) : ", PasswordPart.Length);
     PrintString(PasswordPart);
+    Assert(StringsAreEqual(PasswordPart, "user"));
     printf("\n");
     
     md5_result Hash = MD5((u8 *)PasswordPart.Base, PasswordPart.Length); // requires up to 72 bytes of padding
@@ -124,6 +131,7 @@ DecodeAuthString(memory_arena *Arena, string AuthString)
     
     printf("DecodedString : ");
     PrintString(DecodedString);
+    Assert(StringsAreEqual(DecodedString, "user:ee11cbb19052e40b07aac0ca060c23ee"));
     printf("\n");
     
     
@@ -185,7 +193,7 @@ LoadHtpasswd(memory_arena *Arena, string CompletePath, u32 RootLength, string Au
                 else if (InEntry && IsWhitespace(*C))
                 {
                     InEntry = false;
-                    LastEntry.Length = C - LastEntry.Base;
+                    LastEntry.Length = (u32)(C - LastEntry.Base);
                     if (StringsAreEqual(LastEntry, DecodedAuthString))
                     {
                         printf("SUCCESSFUL\n");
