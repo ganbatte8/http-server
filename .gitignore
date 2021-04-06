@@ -3,3 +3,4 @@ build/*.obj
 build/*.exe
 build/server_linux
 src/scratch
+build/out

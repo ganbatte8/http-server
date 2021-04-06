@@ -85,6 +85,7 @@ MD5(u8 *Source, u32 MessageLength)
     u32 OriginalSizeInBits = MessageLength * 8;
     u32 *WriteSizePtr = (u32 *)(Source + PaddedLength - 8);
     *WriteSizePtr = OriginalSizeInBits;
+    WriteSizePtr[1] = 0;
     
     
     u32 ChunksCount = PaddedLength / 64;
@@ -162,6 +163,11 @@ internal void
 TestMD5()
 {
     char Buffer[1000] = {};
+    
+    for (u32 i = 0; i < ArrayCount(Buffer); i++)
+    {
+        Buffer[i] = (char)i;
+    }
     
     string String[4];
     string ExpectedHash[4];

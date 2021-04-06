@@ -116,6 +116,10 @@ PushReadEntireFile(memory_arena *Arena, char *Filename)
             if (BytesWritten == Result.Size)
                 Result.Success = true;
         }
+        fclose(File);
+        // NOTE(vincent): Fun fact: I had forgotten to put fclose() here. The result was that
+        // when you keep reloading the same page after a certain number of times,
+        // the server would return 404 errors exclusively.
     }
     return Result;
 }
@@ -135,6 +139,5 @@ DEBUGWriteEntireFile(char *Filename, u32 Size, void *Memory)
             Result = true;
     }
     
-    // TODO(vincent): error checking ?
     return Result;
 }

@@ -5,13 +5,15 @@
 
 // TODO(vincent): Authentication
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication
+// (probably done now?)
 // TODO(vincent): multisite
-// TODO(vincent): linux port
-
+// TODO(vincent): profiling? I'm curious to see what's slow
+// TODO(vincent): the bonus feature
 
 internal initialize_server_memory_result
 InitializeServerMemory(server_memory *Memory, platform_work_queue *Queue, 
-                       platform_add_entry *PlatformAddEntry)
+                       platform_add_entry *PlatformAddEntry, 
+                       platform_do_next_work_entry *PlatformDoNextWorkEntry)
 {
     TestMD5();
     TestFromBase64();
@@ -25,6 +27,7 @@ InitializeServerMemory(server_memory *Memory, platform_work_queue *Queue,
     
     State->Queue = Queue;
     State->PlatformAddEntry = PlatformAddEntry;
+    Memory->PlatformDoNextWorkEntry = PlatformDoNextWorkEntry;
     
     // NOTE(vincent): Load config file
     parsed_config_file_result *Config = &State->Config;
@@ -60,6 +63,7 @@ InitializeServerMemory(server_memory *Memory, platform_work_queue *Queue,
     {
         task_with_memory *Task = State->Tasks + TaskIndex;
         Task->BeingUsed = false;
+        Task->Index = TaskIndex;
         SubArena(&Task->Arena, &State->Arena, SubArenaSize);
     }
     
@@ -102,24 +106,23 @@ DecodeAuthString(memory_arena *Arena, string AuthString)
     
     char *Dest = PushArray(Arena, AuthString.Length + 72, char);
     
-    ZeroBytes(Dest, AuthString.Length + 72);  
-    // TODO(vincent): This seems to fix a bug with MD5 where it produces undesired hashes on
-    // subsequent memory reuse, but it shouldn't be necessary since MD5() should be producing the padding
-    // for itself. What is happening here?
-    
     string Plain = FromBase64(AuthString, Dest);  // this should be less bytes than the source
     
+#if 0
     printf("Plain : ");
     PrintString(Plain);
     printf("\n");
     Assert(StringsAreEqual(Plain, "user:user"));
+#endif
     
     string PasswordPart = StringSuffixAfter(Plain, ':');
     
+#if 0
     printf("PasswordPart (%d) : ", PasswordPart.Length);
     PrintString(PasswordPart);
     Assert(StringsAreEqual(PasswordPart, "user"));
     printf("\n");
+#endif
     
     md5_result Hash = MD5((u8 *)PasswordPart.Base, PasswordPart.Length); // requires up to 72 bytes of padding
     
@@ -128,11 +131,12 @@ DecodeAuthString(memory_arena *Arena, string AuthString)
     
     string DecodedString = StringBaseLength(Dest, Plain.Length - PasswordPart.Length + 32);
     
-    
+#if 0
     printf("DecodedString : ");
     PrintString(DecodedString);
     Assert(StringsAreEqual(DecodedString, "user:ee11cbb19052e40b07aac0ca060c23ee"));
     printf("\n");
+#endif
     
     
     return DecodedString;
@@ -157,15 +161,19 @@ LoadHtpasswd(memory_arena *Arena, string CompletePath, u32 RootLength, string Au
     while (!ReadResult.Memory && TruncateStringUntil(&Scratch, '/') && Scratch.Length >= RootLength)
     {
         AppendStringLiteralAndNull(&Scratch, ".htpasswd");
+#if 0
         printf(Scratch.Base);
         printf("\n");
+#endif
         ReadResult = PushReadEntireFile(Arena, Scratch.Base);
         TruncateStringUntil(&Scratch, '/');
     }
     
     if (ReadResult.Memory)
     {
+#if 0
         printf("PROTECTED\n");
+#endif
         // NOTE(vincent): File is protected
         // Unauthorized if no auth string given (rule: zero is initialization), forbidden otherwise.
         
@@ -173,13 +181,16 @@ LoadHtpasswd(memory_arena *Arena, string CompletePath, u32 RootLength, string Au
         if (ReadResult.Success && AuthString.Base)
         {
             string DecodedAuthString = DecodeAuthString(Arena, AuthString);
+#if 0
             PrintString(DecodedAuthString);
             printf(" DECODED\n");
+#endif
             // NOTE(vincent): Compare htpasswd entries with the decoded auth string as you parse the file
             // and see whether there is a match.
             
             b32 InEntry = false;
             string LastEntry;
+            
             LastEntry.Base = ReadResult.Memory;
             LastEntry.Length = 0;
             for (u32 Byte = 0; Byte < ReadResult.Size; Byte++)
@@ -196,13 +207,16 @@ LoadHtpasswd(memory_arena *Arena, string CompletePath, u32 RootLength, string Au
                     LastEntry.Length = (u32)(C - LastEntry.Base);
                     if (StringsAreEqual(LastEntry, DecodedAuthString))
                     {
+#if 0
                         printf("SUCCESSFUL\n");
+#endif
                         // NOTE(vincent): Successful authentication
                         Result = AccessResult_Granted;
                         break;
                     }
                 }
             }
+            printf("Forbidden by %s\n", Scratch.Base);
         }
         else
         {
@@ -212,7 +226,9 @@ LoadHtpasswd(memory_arena *Arena, string CompletePath, u32 RootLength, string Au
     }
     else
     {
+#if 0
         printf("NOT PROTECTED\n");
+#endif
     }
     
     return Result;
@@ -228,6 +244,9 @@ struct receive_and_send_work
 };
 
 
+// NOTE(vincent): Two reasons to push the strings to print into a buffer before actually printing them:
+// - less likely to have the output get mixed up with the output from other threads
+// - less system calls means it might be faster, although you probably have some extra copying to do.
 internal 
 PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
 {
@@ -245,10 +264,6 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
     parsed_config_file_result *Config = &Work->State->Config;
     char *Root = Config->Root;
     
-    //server_state *State = (server_state *)Memory->PermanentStorage;
-    
-    //int SizeTheirAddress = sizeof(*IncomingAddress);
-    
     char *AddressString = PushArray(Arena, INET6_ADDRSTRLEN, char);
     inet_ntop(IncomingAddress->sa_family, GetInternetAddress(IncomingAddress),
               AddressString, INET6_ADDRSTRLEN);
@@ -259,7 +274,7 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
     ToPrint.Base = PrintBuffer;
     ToPrint.Length = 0;
     
-    ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "Server: got connection from ");
+    ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n\nServer: got connection from ");
     ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, AddressString);
     ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, " ");
     u32 ReceiveBufferSize = 8192;  // 8*1024 bytes
@@ -272,19 +287,15 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
         char *ReceiveBuffer = PushArray(Arena, ReceiveBufferSize, char);
         int BytesReceived = recv(ClientSocket, ReceiveBuffer, ReceiveBufferSize, 0);
         
-        //if (Result.BytesReceived <= 0 || Result.BytesReceived == INVALID_SOCKET)
-        //break;
         if (HandleReceiveError(BytesReceived, ClientSocket))
         {
-            // TODO(vincent): make sure this is handled properly on all platforms
-            // TODO(vincent): should Windows branch here when BytesReceived == 0 ?
 #if 1
-            // NOTE(vincent): This is for debugging purposes. Watch out for buffer overflow~
+            // NOTE(vincent): Printing the bytes received in plain ascii, and in readable hexadecimal.
+            // If you enable this, make sure PrintBufferSize is big enough!
             ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "BytesReceived: ");
             ToPrint.Length += SprintInt(PrintBuffer + ToPrint.Length, BytesReceived);
-            ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n\n");
-#if 1
-            // NOTE(vincent): If you enable this you probably want to increase PrintBufferSize.
+            ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
+#if 0
             ToPrint.Length += SprintBounded(PrintBuffer + ToPrint.Length, ReceiveBuffer, BytesReceived);
             ToPrint.Length += BinaryToHexadecimal(PrintBuffer + ToPrint.Length, ReceiveBuffer,
                                                   BytesReceived);
@@ -295,13 +306,13 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
             http_request Request = ParseHTTPRequest(ReceiveBuffer, BytesReceived);
             if (Request.IsValid)
             {
-                printf("Isolated Request AuthString: ");
-                PrintString(Request.AuthString);
-                printf("\n");
+                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "Isolated Request AuthString: ");
+                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, Request.AuthString);
+                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
                 
-                printf("Isolated Host string: ");
-                PrintString(Request.Host);
-                printf("\n");
+                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "Isolated Host string: ");
+                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, Request.Host);
+                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
                 
                 // TODO(vincent): use Result.Host somehow
                 // TODO(vincent): maybe use Result.HttpVersion?
@@ -324,21 +335,21 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
                 {
                     case AccessResult_Unauthorized:
                     {
-                        printf("RESULT: UNAUTHORIZED\n");
+                        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: UNAUTHORIZED\n");
                         LengthToSend = sizeof(STRING_UN) - 1;
                         SendBuffer = PushArray(Arena, LengthToSend, char);
                         SprintNoNull(SendBuffer, StringUN);
                     } break;
                     case AccessResult_Forbidden:
                     {
-                        printf("RESULT: FORBIDDEN\n");
+                        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: FORBIDDEN\n");
                         LengthToSend = sizeof(STRING_FB) - 1;
                         SendBuffer = PushArray(Arena, LengthToSend, char);
                         SprintNoNull(SendBuffer, StringFB);
                     } break;
                     case AccessResult_Granted:
                     {
-                        printf("RESULT: GRANTED\n");
+                        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: GRANTED\n");
                         SendBuffer = PushArray(Arena, sizeof(STRING_OK)-1, char);
                         SprintNoNull(SendBuffer, StringOK);
                         
@@ -380,20 +391,25 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
     } // END for (;;)
     
     
-    
     int BytesSent = send(ClientSocket, SendBuffer, LengthToSend, 0);
     if (HandleSendError(BytesSent, ClientSocket))
     {
-        // TODO(vincent): handle this correctly on all platforms
 #if 1
-        ToPrint.Length += sprintf(PrintBuffer + ToPrint.Length, "BytesSent: %d\n", BytesSent);
+        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "BytesSent: ");
+        ToPrint.Length += SprintInt(PrintBuffer + ToPrint.Length, BytesSent);
+        u32 AddressOffset = (u32)((u8 *)SendBuffer - Arena->Base);
+        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length," AddressOffset: ");
+        ToPrint.Length += SprintInt(PrintBuffer + ToPrint.Length, AddressOffset);
+        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length," Arena size: ");
+        ToPrint.Length += SprintInt(PrintBuffer + ToPrint.Length, Arena->Size);
+        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length,"\n");
 #endif
     }
     
-    Assert(ToPrint.Length <= PrintBufferSize);
+    Assert(ToPrint.Length < PrintBufferSize);
+    Assert(ToPrint.Base[ToPrint.Length] == 0);
     puts(ToPrint.Base);
     
-    // TODO(vincent): handle this on all platforms :)
     ShutdownConnection(ClientSocket);
     
     EndTaskWithMemory(Work->Task);
@@ -405,10 +421,15 @@ PrepareHandshaking(server_memory *Memory, struct sockaddr *IncomingAddress, SOCK
     server_state *State = (server_state *)Memory->Storage;
     
     task_with_memory *Task = 0;
+    
+    
     while (!Task)
     {
         Task = BeginTaskWithMemory(State);
     }
+    
+    Assert(Task->Arena.TempCount == 1);
+    Assert(Task->Arena.Used == 0);
     
     receive_and_send_work *Work = PushStruct(&Task->Arena, receive_and_send_work);
     Work->IncomingAddress = *IncomingAddress; // deep copy so that other threads don't mutate what we use
@@ -416,6 +437,8 @@ PrepareHandshaking(server_memory *Memory, struct sockaddr *IncomingAddress, SOCK
     Work->ClientSocket = ClientSocket;
     Work->Task = Task;
     Work->State = State;
-    
     State->PlatformAddEntry(Queue, ReceiveAndSend, Work);
+    if (Task->Index == ArrayCount(State->Tasks)-1)
+        Memory->PlatformDoNextWorkEntry(Queue); // Main thread gets to do queue work
+    
 }

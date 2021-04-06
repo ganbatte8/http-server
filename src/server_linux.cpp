@@ -21,18 +21,6 @@ typedef int SOCKET;        // same
 #include "server.cpp"
 
 
-#if 0
-// TODO(vincent): nuke this if we don't fork
-internal void
-sigchld_handler(int s)
-{
-    // waitpid() might overwrite errno, so we save and restore it:
-    int saved_errno = errno;
-    while(waitpid(-1, NULL, WNOHANG) > 0);
-    errno = saved_errno;
-}
-#endif 
-
 struct platform_work_queue
 {
     u32 volatile NextEntryToWrite;
@@ -165,8 +153,8 @@ int main(void)
         perror("mmap failed");
         return 1;
     }
-    initialize_server_memory_result InitResult = InitializeServerMemory(&ServerMemory, &Queue, 
-                                                                        LinuxAddEntry);
+    initialize_server_memory_result InitResult = 
+        InitializeServerMemory(&ServerMemory, &Queue, LinuxAddEntry, LinuxDoNextWorkQueueEntry);
     
     if (InitResult.ParsingErrorCount == 0)
     {
@@ -230,20 +218,6 @@ int main(void)
             exit(1);
         }
         
-#if 0
-        // TODO(vincent): If we don't fork, we probably don't want to use that signal stuff.
-        struct sigaction SignalAction;
-        SignalAction.sa_handler = sigchld_handler; // reap all dead processes
-        sigemptyset(&SignalAction.sa_mask);
-        SignalAction.sa_flags = SA_RESTART;
-        
-        if (sigaction(SIGCHLD, &SignalAction, NULL) == -1) 
-        {
-            perror("sigaction");
-            exit(1);
-        }
-#endif
-        
         struct sockaddr_storage TheirAddress; // connector's address information
         socklen_t SizeTheirAddress = sizeof(TheirAddress);
         printf("Server: waiting for a connection on port %s\n", InitResult.PortString);
@@ -256,7 +230,7 @@ int main(void)
             if (ClientSocket == -1) 
             {
                 perror("accept failed");
-                continue;  // TODO(vincent): Is it reasonable to expect a bad accept in real conditions?
+                continue;
             }
             
             PrepareHandshaking(&ServerMemory, (struct sockaddr *)&TheirAddress, ClientSocket, &Queue);

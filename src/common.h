@@ -33,8 +33,11 @@
 #define Terabytes(Value) (Gigabytes(Value) * 1000LL)
 
 #define SERVER_STORAGE_SIZE Megabytes(64)
-// TODO(vincent): maybe we can ask the OS to query how many cores we have
+
 #define NUMBER_OF_THREADS 4
+// NOTE(vincent): Needs to be at least 1, ideally <= the number of cores on the machine.
+// TODO(vincent): maybe we can ask the OS to query how many cores we have
+
 #define DEFAULT_SERVER_PORT "80"  // the port users will be connecting to
 
 
@@ -181,7 +184,8 @@ struct platform_work_queue_entry
     void *Data;
 };
 
-
+#define PLATFORM_DO_NEXT_WORK_ENTRY(name) b32 name(platform_work_queue *Queue)
+typedef PLATFORM_DO_NEXT_WORK_ENTRY(platform_do_next_work_entry);
 
 struct server_memory
 {
@@ -190,6 +194,7 @@ struct server_memory
     
     platform_work_queue *Queue;
     platform_add_entry *PlatformAddEntry;
+    platform_do_next_work_entry *PlatformDoNextWorkEntry;  // NOTE(vincent): for the main thread
 };
 
 

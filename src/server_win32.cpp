@@ -139,7 +139,7 @@ HandleReceiveError(int BytesReceived, SOCKET ClientSocket)
     {
         printf("recv failed: %d\n", WSAGetLastError());
         closesocket(ClientSocket);
-        WSACleanup();
+        //WSACleanup();
         Success = false;
     }
     return Success;
@@ -153,7 +153,7 @@ HandleSendError(int BytesSent, SOCKET ClientSocket)
     {
         printf("send failed: %d\n", WSAGetLastError());
         closesocket(ClientSocket);
-        WSACleanup();
+        //WSACleanup();
         Success = false;
     }
     return Success;
@@ -164,14 +164,19 @@ ShutdownConnection(SOCKET ClientSocket)
 {
     // shutdown the send half of the connection since no more data will be sent
     int ShutdownResult = shutdown(ClientSocket, SD_SEND);
+    
     if (ShutdownResult == SOCKET_ERROR) 
     {
-        printf("shutdown failed: %d\n", WSAGetLastError());
-        closesocket(ClientSocket);
-        WSACleanup();
+        //printf("shutdown failed: %d\n", WSAGetLastError());
+        
+        // NOTE(vincent): Here is a real scenario where we could branch here:
+        // if you spam F5 (refresh) in your navigator, the client may forcibly close the connection early
+        // by themself, in which case shutdown() will return error 10054.
+        // The server should keep running.
+        
+        //WSACleanup();
     }
-    else
-        closesocket(ClientSocket);
+    closesocket(ClientSocket);
 }
 
 int main() 
@@ -187,7 +192,7 @@ int main()
     ServerMemory.Storage = VirtualAlloc(BaseAddress, ServerMemory.StorageSize,
                                         MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     initialize_server_memory_result InitResult =
-        InitializeServerMemory(&ServerMemory, &Queue, Win32AddEntry);
+        InitializeServerMemory(&ServerMemory, &Queue, Win32AddEntry, Win32DoNextWorkQueueEntry);
     
     
     if (InitResult.ParsingErrorCount == 0)
@@ -218,7 +223,7 @@ int main()
         if (GetaddrinfoResult != 0) 
         {
             printf("getaddrinfo failed: %d\n", GetaddrinfoResult);
-            WSACleanup();
+            //WSACleanup();
             return 2;
         }
         
@@ -230,7 +235,7 @@ int main()
         {
             printf("Error at socket(): %ld\n", WSAGetLastError());
             freeaddrinfo(AddressInfo);
-            WSACleanup();
+            //WSACleanup();
             return 3;
         }
         
@@ -242,7 +247,7 @@ int main()
             printf("bind failed with error: %d\n", WSAGetLastError());
             freeaddrinfo(AddressInfo);
             closesocket(ListenSocket);
-            WSACleanup();
+            //WSACleanup();
             return 4;
         }
         
@@ -252,14 +257,14 @@ int main()
         {
             printf( "Listen failed with error: %ld\n", WSAGetLastError());
             closesocket(ListenSocket);
-            WSACleanup();
+            //WSACleanup();
             return 5;
         }
         
         struct sockaddr_storage TheirAddress; // connector's address information
         int SizeTheirAddress = sizeof(TheirAddress);
-        printf("Server: waiting for a connection on port %s\n", InitResult.PortString);
-        
+        printf("\nServer: waiting for a connection on port %s\n", InitResult.PortString);
+        u32 RequestsCount = 0;
         for (;;)
         {
             // Accept a client socket
@@ -270,14 +275,20 @@ int main()
             {
                 printf("accept failed: %d\n", WSAGetLastError());
                 closesocket(ListenSocket);
-                WSACleanup();
+                //WSACleanup();
                 return 6;
             }
+            else
+                PrepareHandshaking(&ServerMemory, (struct sockaddr *)&TheirAddress, ClientSocket, &Queue);
             
-            PrepareHandshaking(&ServerMemory, (struct sockaddr *)&TheirAddress, ClientSocket, &Queue);
+            RequestsCount++;
+            //printf("%u requests\n", RequestsCount); 
         }
         
-        //WSACleanup(); // TODO(vincent): Do we ever need to call this anywhere?
+        //WSACleanup(); 
+        // NOTE(vincent): I think we don't need to ever call WSACleanup() anywhere.
+        // when we call WSACleanup(), the server can't really run anymore, so you might as well
+        // just close the program, and any modern OS should free the memory when the process disappears.
     }
     return 0;
 }
