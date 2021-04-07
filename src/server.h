@@ -19,8 +19,6 @@ struct server_state
     char *StringUN;
     char *StringFB;
     task_with_memory Tasks[NUMBER_OF_THREADS];
-    // TODO(vincent): NUMBER_OF_THREADS if it turns out later that the main thread can also do
-    // work from the queue?
     platform_work_queue *Queue;
     platform_add_entry *PlatformAddEntry;
 };

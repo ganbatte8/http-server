@@ -6,7 +6,6 @@
 // TODO(vincent): Authentication
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication
 // (probably done now?)
-// TODO(vincent): multisite
 // TODO(vincent): profiling? I'm curious to see what's slow
 // TODO(vincent): the bonus feature
 
@@ -15,8 +14,10 @@ InitializeServerMemory(server_memory *Memory, platform_work_queue *Queue,
                        platform_add_entry *PlatformAddEntry, 
                        platform_do_next_work_entry *PlatformDoNextWorkEntry)
 {
+#if DEBUG
     TestMD5();
     TestFromBase64();
+#endif
     
     // NOTE(vincent): Initialize server state.
     initialize_server_memory_result InitResult = {};
@@ -33,7 +34,7 @@ InitializeServerMemory(server_memory *Memory, platform_work_queue *Queue,
     parsed_config_file_result *Config = &State->Config;
     Assert(sizeof(DEFAULT_SERVER_PORT) <= ArrayCount(Config->PortString));
     Sprint(Config->PortString, DEFAULT_SERVER_PORT); // initializing to default server port number
-    InitResult.ParsingErrorCount = ParseConfigFile(Config);
+    InitResult.ParsingErrorCount = ParseConfigFile(Config, &State->Arena);
     InitResult.PortString = Config->PortString;
     
     // NOTE(vincent): Push string constants tightly and null-terminate them.
@@ -161,7 +162,7 @@ LoadHtpasswd(memory_arena *Arena, string CompletePath, u32 RootLength, string Au
     while (!ReadResult.Memory && TruncateStringUntil(&Scratch, '/') && Scratch.Length >= RootLength)
     {
         AppendStringLiteralAndNull(&Scratch, ".htpasswd");
-#if 0
+#if 1
         printf(Scratch.Base);
         printf("\n");
 #endif
@@ -306,6 +307,7 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
             http_request Request = ParseHTTPRequest(ReceiveBuffer, BytesReceived);
             if (Request.IsValid)
             {
+#if 1
                 ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "Isolated Request AuthString: ");
                 ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, Request.AuthString);
                 ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
@@ -313,11 +315,25 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
                 ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "Isolated Host string: ");
                 ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, Request.Host);
                 ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
+#endif
                 
-                // TODO(vincent): use Result.Host somehow
-                // TODO(vincent): maybe use Result.HttpVersion?
+                // TODO(vincent): maybe use Request.HttpVersion?
                 
-                // NOTE(vincent): Concatenate Root and Request.Path into the arena
+                // NOTE(vincent): Concatenate Root, Request.Host and Request.Path into the arena
+#if 1
+                // order of concatenation: root, slash, host, path
+                u32 RootLength = StringLength(Root);
+                u32 RequestLength = Request.RequestPath.Length;
+                u32 HostLength = Request.Host.Length;
+                u32 CompletePathLength = RootLength + 1 + HostLength + RequestLength;
+                string CompletePath = StringBaseLength(PushArray(Arena, CompletePathLength + 2, char),
+                                                       CompletePathLength);
+                SprintNoNull(CompletePath.Base, Root);
+                SprintNoNull(CompletePath.Base + RootLength, "/");
+                SprintNoNull(CompletePath.Base + RootLength + 1, Request.Host);
+                Sprint(CompletePath.Base + RootLength + 1 + HostLength, Request.RequestPath);
+#else
+                // order of concatenation: root, path
                 u32 RootLength = StringLength(Root);
                 u32 RequestLength = Request.RequestPath.Length;
                 u32 CompletePathLength = RootLength + RequestLength;
@@ -325,7 +341,7 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
                                                        CompletePathLength);
                 SprintNoNull(CompletePath.Base, Root);
                 Sprint(CompletePath.Base + RootLength, Request.RequestPath);
-                
+#endif
                 // NOTE(vincent): Check for Htpasswd file and get access result
                 access_result AccessResult = 
                     LoadHtpasswd(Arena, CompletePath, RootLength, Request.AuthString);
@@ -335,29 +351,27 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
                 {
                     case AccessResult_Unauthorized:
                     {
-                        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: UNAUTHORIZED\n");
+                        //ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: UNAUTHORIZED\n");
                         LengthToSend = sizeof(STRING_UN) - 1;
                         SendBuffer = PushArray(Arena, LengthToSend, char);
                         SprintNoNull(SendBuffer, StringUN);
                     } break;
                     case AccessResult_Forbidden:
                     {
-                        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: FORBIDDEN\n");
+                        //ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: FORBIDDEN\n");
                         LengthToSend = sizeof(STRING_FB) - 1;
                         SendBuffer = PushArray(Arena, LengthToSend, char);
                         SprintNoNull(SendBuffer, StringFB);
                     } break;
                     case AccessResult_Granted:
                     {
-                        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: GRANTED\n");
+                        //ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: GRANTED\n");
                         SendBuffer = PushArray(Arena, sizeof(STRING_OK)-1, char);
                         SprintNoNull(SendBuffer, StringOK);
                         
                         // NOTE(vincent): Try to load the file
-                        u32 ArenaRemainingSize = Arena->Size - Arena->Used;
-                        char *Body = PushArray(Arena, ArenaRemainingSize, char);
-                        safer_read_file_result ReadFileResult =
-                            SaferReadEntireFileInto(Body, CompletePath.Base, ArenaRemainingSize);
+                        push_read_entire_file ReadFileResult =
+                            PushReadEntireFile(Arena, CompletePath.Base);
                         
                         if (ReadFileResult.Success)
                         {
@@ -419,15 +433,12 @@ internal void
 PrepareHandshaking(server_memory *Memory, struct sockaddr *IncomingAddress, SOCKET ClientSocket, platform_work_queue *Queue)
 {
     server_state *State = (server_state *)Memory->Storage;
-    
     task_with_memory *Task = 0;
     
-    
     while (!Task)
-    {
         Task = BeginTaskWithMemory(State);
-    }
     
+    Assert(Task);  // TODO(vincent): why is this firing when we don't spinlock?
     Assert(Task->Arena.TempCount == 1);
     Assert(Task->Arena.Used == 0);
     

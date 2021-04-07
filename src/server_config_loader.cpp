@@ -2,14 +2,14 @@
 
 
 internal void
-AddToken(read_file_result Source, scanner_location *Scanner, parsed_config_tokens *T,
+AddToken(push_read_entire_file Source, scanner_location *Scanner, parsed_config_tokens *T,
          token_hint Hint)
 {
     config_token Token;
     Token.Type = Hint.Type;
     Token.Row = Scanner->Row;
     Token.Column = Scanner->Column;
-    Token.Lexeme.Base = Source.Content + Scanner->Start;
+    Token.Lexeme.Base = Source.Memory + Scanner->Start;
     Token.Lexeme.Length = Scanner->Current - Scanner->Start + 1;
     
     switch (Hint.Type)
@@ -37,11 +37,11 @@ AddToken(read_file_result Source, scanner_location *Scanner, parsed_config_token
 }
 
 internal b32 
-ScannerMatch(read_file_result Source, scanner_location *Scanner, char Expected)
+ScannerMatch(push_read_entire_file Source, scanner_location *Scanner, char Expected)
 {
     if (Scanner->Current >= Source.Size)
         return false;
-    if (Source.Content[Scanner->Current] != Expected)
+    if (Source.Memory[Scanner->Current] != Expected)
         return false;
     Scanner->Current++;
     return true;
@@ -69,21 +69,20 @@ IsAlphaNumeric(char C)
 }
 
 internal char
-ScannerPeek(read_file_result Source, scanner_location *Scanner)
+ScannerPeek(push_read_entire_file Source, scanner_location *Scanner)
 {
     if (Scanner->Current < Source.Size)
-        return Source.Content[Scanner->Current];
+        return Source.Memory[Scanner->Current];
     return 0;
 }
 
 internal void
-ScanString(read_file_result Source, scanner_location *Scanner, parsed_config_tokens *Tokens)
+ScanString(push_read_entire_file Source, scanner_location *Scanner, parsed_config_tokens *Tokens)
 {
     printf("ScanString: (%u, %u)\n", Scanner->Row, Scanner->Column);
     while (ScannerPeek(Source, Scanner) != '"' && Scanner->Current < Source.Size)
     {
         if (ScannerPeek(Source, Scanner) == '\n') 
-            // TODO(vincent): we probably don't want to support multiline strings
         {
             Scanner->Current++;
             Scanner->Row++;
@@ -107,7 +106,7 @@ ScanString(read_file_result Source, scanner_location *Scanner, parsed_config_tok
     
     
     string String;
-    String.Base = Source.Content + Scanner->Start + 1;
+    String.Base = Source.Memory + Scanner->Start + 1;
     String.Length = Scanner->Current - Scanner->Start - 1;
     
     // Advancing over the unquote symbol:
@@ -118,9 +117,9 @@ ScanString(read_file_result Source, scanner_location *Scanner, parsed_config_tok
 }
 
 internal void 
-ScanNumber(read_file_result Source, scanner_location *Scanner, parsed_config_tokens *Tokens)
+ScanNumber(push_read_entire_file Source, scanner_location *Scanner, parsed_config_tokens *Tokens)
 {
-    u32 Value = Source.Content[Scanner->Start] - '0';
+    u32 Value = Source.Memory[Scanner->Start] - '0';
     b32 OverflowSixteen = false;
     for (;;)
     {
@@ -148,7 +147,7 @@ ScanNumber(read_file_result Source, scanner_location *Scanner, parsed_config_tok
 }
 
 internal void 
-ScanIdentifier(read_file_result Source, scanner_location *Scanner, 
+ScanIdentifier(push_read_entire_file Source, scanner_location *Scanner, 
                parsed_config_tokens *Tokens)
 {
     while (IsAlphaNumeric(ScannerPeek(Source, Scanner)))
@@ -158,7 +157,7 @@ ScanIdentifier(read_file_result Source, scanner_location *Scanner,
     }
     
     string Identifier;
-    Identifier.Base = Source.Content + Scanner->Start;
+    Identifier.Base = Source.Memory + Scanner->Start;
     Identifier.Length = Scanner->Current - Scanner->Start;
     
     if (StringsAreEqual(Identifier, "port"))
@@ -179,9 +178,9 @@ ScanIdentifier(read_file_result Source, scanner_location *Scanner,
     
 }
 internal void
-ScanToken(read_file_result Source, scanner_location *Scanner, parsed_config_tokens *Tokens)
+ScanToken(push_read_entire_file Source, scanner_location *Scanner, parsed_config_tokens *Tokens)
 {
-    char C = Source.Content[Scanner->Current];
+    char C = Source.Memory[Scanner->Current];
     Scanner->Current++;
     Scanner->Column++;
     
@@ -234,11 +233,13 @@ ScanToken(read_file_result Source, scanner_location *Scanner, parsed_config_toke
 }
 
 internal u32
-ParseConfigFile(parsed_config_file_result *Result)
+ParseConfigFile(parsed_config_file_result *Result, memory_arena *Arena)
 {
-    read_file_result ReadFileResult = DEBUGReadEntireFile("config");
+    temporary_memory TempMem = BeginTemporaryMemory(Arena);
+    push_read_entire_file ReadFileResult = PushReadEntireFile(Arena, "config");
+    // TODO(vincent): pool this?
     
-    if (!ReadFileResult.Content)
+    if (!ReadFileResult.Memory)
     {
         fprintf(stderr, "Couldn't load config file.\n");
         return 0;
@@ -329,7 +330,6 @@ ParseConfigFile(parsed_config_file_result *Result)
             }
         }
         
-        // TODO(vincent): count set/not set as token errors ?
         if (Result->PortSet)
         {
             IntegerToString(Result->Port, Result->PortString);
@@ -343,6 +343,6 @@ ParseConfigFile(parsed_config_file_result *Result)
             printf("Didn't set the root\n");
     }
     
-    free(ReadFileResult.Content);
+    EndTemporaryMemory(TempMem);
     return Scanner.ErrorCount;
 }

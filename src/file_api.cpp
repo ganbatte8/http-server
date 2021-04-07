@@ -1,65 +1,4 @@
-
-internal void
-DEBUGFreeFileMemory(void *Content)
-{
-    if (Content)
-        free(Content);
-}
-
-struct read_file_result
-{
-    size_t Size;
-    char *Content;
-};
-
-internal read_file_result
-DEBUGReadEntireFile(const char *Filename)
-{
-    read_file_result Result = {};
-    FILE *File = fopen(Filename, "rb");
-    if (File)
-    {
-        fseek(File, 0, SEEK_END);
-        size_t FileSize = ftell(File);
-        fseek(File, 0, SEEK_SET);
-        Result.Content = (char *)malloc(FileSize);
-        Result.Size = FileSize;
-        if (Result.Content)
-        {
-            fread(Result.Content, FileSize, 1, File);
-        }
-        fclose(File);
-    }
-    
-    return Result;
-}
-
-// NOTE(vincent): ReadEntireFileInto is the same as ReadEntireFile, except it doesn't malloc
-// and writes into a pointer parameter instead.
-
-internal read_file_result
-DEBUGReadEntireFileInto(char *Filename, char *Buffer)
-{
-    read_file_result Result = {};
-    FILE *File = fopen(Filename, "rb");
-    if (File)
-    {
-        fseek(File, 0, SEEK_END);
-        size_t FileSize = ftell(File);
-        fseek(File, 0, SEEK_SET);
-        Result.Content = Buffer;
-        Result.Size = FileSize;
-        if (Result.Content)
-        {
-            fread(Result.Content, FileSize, 1, File);
-        }
-        fclose(File);
-    }
-    
-    return Result;
-}
-
-
+#if 0
 struct safer_read_file_result
 {
     size_t Size;
@@ -90,6 +29,7 @@ SaferReadEntireFileInto(char *Dest, char *Filename, u32 AvailableSize)
     
     return Result;
 }
+#endif
 
 struct push_read_entire_file
 {
@@ -124,7 +64,7 @@ PushReadEntireFile(memory_arena *Arena, char *Filename)
     return Result;
 }
 
-
+#if 0
 internal b32
 DEBUGWriteEntireFile(char *Filename, u32 Size, void *Memory)
 {
@@ -141,3 +81,4 @@ DEBUGWriteEntireFile(char *Filename, u32 Size, void *Memory)
     
     return Result;
 }
+#endif

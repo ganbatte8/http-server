@@ -1,8 +1,5 @@
 #include <stdint.h>
 #include <stdio.h>
-#include <malloc.h>  // TODO(vincent): maybe get rid of this
-
-
 
 #if !defined(COMPILER_MSVC)
 #define COMPILER_MSVC 0
@@ -473,6 +470,16 @@ Sprint(char *Dest, string Source)
     *Dest = 0;
     return Source.Length;
 }
+
+inline u32
+SprintNoNull(char *Dest, string Source)
+{
+    char *C = Source.Base;
+    for (u32 Count = 0; Count < Source.Length; Count++)
+        *Dest++ = *C++;
+    return Source.Length;
+}
+
 
 inline u32
 SprintNoNull(char *Dest, char *Source)
