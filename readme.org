@@ -137,7 +137,7 @@ You can protect a resource file (an entire subtree of directories, in fact) by c
 #+BEGIN_SRC text
 user:password_in_md5
 #+END_SRC
-When a client tries to access a protected file, it will be asked for a user and password.
+When a client tries to access a protected file, they will be asked for a user and password.
 The user:password data from the client is sent in a base64 encoded format, in clear.
 This is not an encrypted format: base64 is easily reversible, which is why you probably don't want to use this authentication framework for anything serious.
 When that data is received by the server, it is decoded back and the password is converted to an MD5 hash of itself, so that it can be compared with .htpasswd
