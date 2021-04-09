@@ -1,0 +1,423 @@
+* Overview
+This is a unity build architecture, meaning that there is only one translation unit to compile. We don't link .obj files together.
+
+Typically, CamelCase is used for function and variable names, snake_case for structure and type names, CamelCase_WithUnderScores for enum values, SCREAMING_SNAKE_CASE for most #defined constants and macro'd function signatures.
+
+Code is either platform-dependent or platform-independent.
+
+server_win32.cpp and server_linux.cpp can be thought of as platform layers that port the server to Windows and Linux respectively.
+They contain the entry point of the program, and you will find system calls that are OS-specific in each of them.
+build.sh will build from server_linux.cpp and build.bat will build from server_win32.cpp.
+The two platform layers are actually very similar to each other, and often times a system call in one platform has an equivalent version in the other platform.
+
+We tried to have the rest of the files contain platform-independent code exclusively.
+common.h is the other file where you are the most likely to find platform-specific considerations with #define blocks and typedefs. 
+We kept those confined as much as possible.
+
+Platform layers sit at the bottom of the source code, and they are the input to the compiler.
+Platform layer files are always structured like this:
+- include OS-specific headers, and stdio.h.
+- include common.h
+- include server.cpp
+- implement the multithreaded work queue backend 
+- implement HandleReceiveError(), HandleSendError() and ShutdownConnection()
+- main: initialize the work queue and create the threads
+- main: allocate a block of memory and call InitializeServerMemory()
+- main: set up a listening stream socket (i.e. TCP)
+- main: infinite loop: accept() a client socket, call PrepareHandshaking()
+
+common.h sits at the top of our assembled source code. It contains:
+- macro definitions that are used throughout the code
+- type definitions that are used throughout the code
+- memory_arena and temporary_memory structs, with some related functions
+- a few forward-declared structs and functions that must be implemented by the platform layer (HandleReceiveError(), HandleSendError(), ShutdownConnection(), platform_work_queue)
+- server_memory struct
+- Some utility routines, especially for manipulating strings.
+- PushReadEntireFile(), which relies on the standard library function fopen() to load an entire file's content into a memory arena. Pretty much our entire file API.
+
+server.cpp comes right after common.h. This file is sort of the "entry point" of the platform-independent code. It's where the main behavior of the program is specified.
+The platform layer, which contains the entry point of the program, has two ways of calling the platform-independent layer:
+- InitializeServerMemory(), which is only called once at startup,
+- PrepareHandshaking(), which is called in the main server loop.
+These two functions are implemented in server.cpp.
+
+server.cpp includes all the remaining parts of the platform-independent source code:
+- server_config_loader.cpp is a lexeme/token based parser of the config file that we try to load at startup.
+- md5_hash.cpp contains an MD5 hash implementation and a base64 decoder implementation. Those are used for HTTP 1.1's Basic authentication framework.
+- server_http_parsing.cpp contains ParseHTTPRequest() which is a top-down parser of an HTTP request.
+
+* Preprocessor constants you might want to play with
+In common.h:
+- SERVER_STORAGE_SIZE specifies the size of the memory block to allocate for the entire server.
+  The server will partition that memory the best it can, but it is not designed to be particularly robust with very small blocks.
+- DEFAULT_SERVER_PORT: default server port that we revert to when the config file does not specify a port.
+- NUMBER_OF_THREADS: Number of total threads, including the main thread. The program will create exactly NUMBER_OF_THREADS-1 threads on startup.
+  If you want to get the most out of the CPU, this number should match the number of cores you have.
+  There may be some OS calls to get that number automatically -- we haven't looked into that.
+  The more threads you use, the more parallel tasks with separate scratch memory spaces are needed, and the less memory each thread has.
+
+* Two ways to represent strings
+There are two ways to represent ascii strings:
+- Have a pointer, usually char*, to the base of the string. The string either extends ad infinitum (dangerous) or has an a priori unspecified length,
+  or ends with a null character (byte of value 0).
+- Use something like our string struct as implemented in common.h, which stores a base pointer and a length.
+We use both representations throughout the code. Although it makes it a little hard to think about sometimes,
+in some situations one seems more convenient than the other, if not mandatory, and vice versa in other situations.
+To name a few:
+- fopen() requires having null-terminated strings.
+- String literals are null-terminated, and if you want to get a length out of them, you either use the sizeof() operator to get the length at compile time, or count the bytes from the base byte until the null byte.
+- With string structs, you don't have to loop through the characters to get the length.
+
+* Multithreaded work queue 
+** API
+We implemented a single producer multiple consumer work queue in each platform layer.
+Each platform layer implements these things:
+- platform_work_queue struct
+- AddEntry()
+- DoNextWorkQueueEntry() 
+- ThreadProc(), an entry point for created threads
+- MakeQueue() to create the threads and initialize the work queue.
+
+Since the platform layer lies at the bottom of the source code, and these function names tend to be platform-specific (e.g. Win32AddEntry() vs. LinuxAddEntry()),
+the platform-independent code should not directly call these functions by their names.
+The way these functions are actually called is like this:
+
+- MakeQueue() is called by the platform-independent layer only, when the program starts.
+- ThreadProc() is only called by the OS. Our code only mentions ThreadProc when we pass it as a function pointer in the system call that creates threads.
+- AddEntry() and DoNextWorkQueueEntry() are passed via the server_memory struct as function pointers.
+These pointers are set when we InitializeServerMemory(). This is the server_memory struct we are talking about:
+#+BEGIN_SRC c
+struct server_memory
+{
+    u32 StorageSize;
+    void *Storage;
+
+    platform_work_queue *Queue;
+    platform_add_entry *PlatformAddEntry;
+    platform_do_next_work_entry *PlatformDoNextWorkEntry;
+};
+#+END_SRC
+
+platform_add_entry and platform_do_next_work_entry are function types.
+In C, what function types do is they hold a certain function signature (return type and parameter types).
+We define these function types in common.h. It may look confusing, but this is how platform_add_entry is defined:
+#+BEGIN_SRC c
+typedef void platform_add_entry(platform_work_queue *Queue, platform_work_queue_callback *Callback, void *Data);
+#+END_SRC
+It means that platform_add_entry is a function type that returns void, and which parameters are a platform_work_queue*, a platform_work_queue_callback*, and a void*.
+
+You can also do this in two steps, first by defining a macro for the function signature, and then typedef a macro call:
+#+BEGIN_SRC c
+#define PLATFORM_DO_NEXT_WORK_ENTRY(name) b32 name(platform_work_queue *Queue)
+typedef PLATFORM_DO_NEXT_WORK_ENTRY(platform_do_next_work_entry);
+#+END_SRC
+The advantage of this approach is that now the function signature only has to exist in one place in the code.
+In server.cpp, ReceiveAndSend() is actually implemented like this:
+#+BEGIN_SRC c
+internal
+PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
+{
+    ...;
+}
+#+END_SRC
+where PLATFORM_WORK_QUEUE_CALLBACK is defined to wrap the function name it takes with the platform_work_queue_callback function type, according to how it's defined in common.h:
+#+BEGIN_SRC c
+#define PLATFORM_WORK_QUEUE_CALLBACK(name) void name(platform_work_queue *Queue, void *Data)
+typedef PLATFORM_WORK_QUEUE_CALLBACK(platform_work_queue_callback);
+#+END_SRC
+
+
+Back to the usage code: now that the server_memory struct has function pointers to AddEntry() and DoNextWorkEntry(), they can be called by the platform-independent code in PrepareHandshaking(): 
+#+BEGIN_SRC c
+Memory->PlatformAddEntry(Queue, ReceiveAndSend, Work);
+if (Task->Index == ArrayCount(State->Tasks) - 1)
+    Memory->PlatformDoNextWorkEntry(Queue); // Main thread gets to do queue work
+#+END_SRC
+
+PlatformAddEntry() takes a callback to a function that you want to thread (in this case, ReceiveAndSend() is the threaded function) and a void Data pointer,
+which is typically used as a pointer to a structure, so it can be thought of as an alternate way to pass parameters to a function
+in a way that is decoupled from the function's signature. This illustrates how a threaded function is implemented with our API.
+
+You want to make sure that the lifetime of the memory you pass to PlatformAddEntry() is handled properly, and won't get wiped out too early,
+so the worker who retrieves the work entry off the queue can still use that data to do the work when the work producing thread leaves PrepareHandshaking().
+
+The sole reason to expose PlatformDoNextWorkEntry() to the platform-independent layer is to give an opportunity to the main thread to do queue work in case all other threads are busy.
+
+** Platform layer: creating the queue and the threads
+The first thing that the platform layer does is instantiate a platform_work_queue, then initialize it and create the threads with MakeQueue().
+Threads are created upfront during server initialization. Threads are never created during the server loop, because that's expensive.
+In the Windows case, this is how platform_work_queue is defined:
+#+BEGIN_SRC c
+struct platform_work_queue
+{
+    u32 volatile NextEntryToWrite;
+    u32 volatile NextEntryToRead;
+    HANDLE SemaphoreHandle;
+    platform_work_queue_entry Entries[256];
+};
+#+END_SRC
+
+It is a circular buffer, with a "read cursor", a "write cursor", and a semaphore.
+In a circular buffer, when the entries to consider reach the end of the buffer, we wrap around and go back to the beginning of the buffer.
+The write cursor stores the location where new entries should be added by the work producer (the thread which calls AddEntry()),
+and the read cursor stores the location where workers should pick up new entries to do (used and updated by DoNextWorkQueueEntry()).
+The volatile keyword tells the compiler that whenever these names are referenced in the source code, the compiler should do the load every time.
+This is important, because when looking at a piece of code, C compilers tend to not be aware that a variable may be accessed and modified by other threads
+at the same time, so the optimizer may incorrectly assume it doesn't always have to reload the data.
+
+The only purpose of the semaphore is to let the OS put threads to sleep in a reasonable way and avoid CPU melting when there is no work to do.
+The semaphore is initialized to 0, because at startup there is no work to do in the queue.
+Secondary threads that try to do queue work always try to do so by calling DoNextWorkEntry() via ThreadProc().
+When that happens, they either find work to do, or they don't. If they don't, then the semaphore count is decreased and that thread is put back to sleep.
+When a new work entry is added in the queue, the semaphore count is incremented by one, so the OS can potentially wake up a thread that was sleeping.
+
+* Server memory strategy
+We define the server_memory struct in common.h.
+#+BEGIN_SRC c
+struct server_memory
+{
+    u32 StorageSize;
+    void *Storage;
+
+    platform_work_queue *Queue;
+    platform_add_entry *PlatformAddEntry;
+    platform_do_next_work_entry *PlatformDoNextWorkEntry;
+};
+#+END_SRC
+
+A server_memory instance is created in the platform layer. StorageSize is specified, and the Storage pointer gets a block of memory of that size
+allocated with VirtualAlloc() or mmap(). This is the only time we ask the OS for a block of memory.
+There are a few benefits to using a single block of memory for the entire lifetime of the process:
+- No virtual memory allocation when the server is running. Less work, at least on the OS side.
+- Impossible to fail from a bad allocation call that we make, other than at the very beginning of the program.
+- Less free() and RAII shenanigans, less concern for leaks.
+- Encourages pushing data tightly in contiguous regions, and modern processors tend to like these memory access patterns a lot more than chasing indirections.
+
+There are two ways we retrieve a pointer to a location of the memory block we can read from and write to:
+- Cast the base pointer of the block of memory to a server_state pointer, so you can store and read a server_state struct in there.
+- Use a memory_arena and one of the Push...() routines.
+
+A memory_arena is a struct that stores the state of a memory stack that you can push things into:
+#+BEGIN_SRC c
+struct memory_arena
+{
+    u32 Size;
+    u8 *Base;
+    u32 Used;
+    s32 TempCount;
+};
+#+END_SRC
+
+A memory arena is initialized with InitializeArena() by passing a size for the stack and the base address of the stack.
+You can use a Push...() routine to increase the Used member and fetch a pointer to the base address of the memory space that you push.
+The server_state struct has one memory_arena instance, and it is initialized in InitializeServerMemory() to fit the entire block, minus the server_state at the beginning.
+
+By default, the things you push into that arena is permanent memory, and you can't reuse that space and make "room" for it.
+But the server, which reloads web pages from disk to main memory when receiving successful GET requests, needs to reuse some of that space eventually.
+We can use BeginTemporaryMemory(), which takes an arena and returns a temporary_memory structure:
+#+BEGIN_SRC c
+struct temporary_memory
+{
+    memory_arena *Arena;
+    u32 Used;
+};
+#+END_SRC
+BeginTemporary() records the Used amount of an arena and produces a temporary_memory, while EndTemporaryMemory() takes that temporary_memory to restore the arena back.
+The data that is pushed between these two calls can be thrown away later.
+
+We use a temporary memory for ReceiveAndSend(), which gives us some scratch space for HTTP requests, loading files, storing the HTTP response to send, storing things to print to stdout, etc.
+
+However, multiple threads can run ReceiveAndSend() at the same time. If two threads were to push to the same arena, they could end up receiving the same base pointer,
+or not update the arena size properly; maybe one thread will call EndTemporaryMemory() and it'll remove some scratch space that included some data
+which was meant to be used by another thread. One arena for multiple threads doesn't really work. 
+To remedy this, in InitializeServerMemory() we partition the remaining scratch space of our arena into as many subarenas as we have threads.
+Each of these subarenas is produced by calling SubArena(), which takes an arena, pushes some size into it and sets a new empty arena with that space.
+
+if we run with 4 threads, then we have four arenas holding some scratch space, and each can hold some temporary_memory with a lifetime independent from other arenas.
+When a thread takes a work queue entry, we need to be able to tell it which arena it can use, such that it doesn't take an arena that another thread is using.
+To do this, the main thread can call BeginTaskWithMemory(), which does a linear search on an array of task_with_memory in the server state.
+#+BEGIN_SRC c
+struct task_with_memory
+{
+    b32 BeingUsed;
+    memory_arena Arena;
+    temporary_memory TempMemory;
+    u32 Index;
+};
+#+END_SRC
+If BeginTaskWithMemory() finds a task for which BeingUsed is not set, then it sets up that task as being used and calls BeginTemporaryMemory() on it.
+Then a thread can use that task to do some work queue with some scratch space, and once it is done using the space it calls EndTaskWithMemory(),
+which calls EndTemporaryMemory() on the arena and sets the task back to unused.
+
+* ReceiveAndSend()
+ReceiveAndSend() is the threaded function in server.cpp
+It has a loop where we call recv().
+recv() tries to receive the message in ReceiveBuffer, which has a hard-coded size limit (8192 bytes, but you can easily change it).
+
+We call HandleReceiveError() to check whether we got an error from recv(). If there is no error then we branch to treat the received data,
+which is supposedly an HTTP request.
+
+If recv() succeeded, we call ParseHTTPRequest() to parse the data that we receive, which is supposedly an HTTP request.
+ParseHTTPRequest() is a top-down parser: First it separates the incoming data line by line.
+
+An HTTP request may look something like this. It is text data separated into several lines, each ending with the two characters CRLF
+(carriage return and line feed, often noted "\r\n" in programming languages). The end of an HTTP request should end with a final empty line, meaning it ends with CRLFCRLF.
+The first line of the HTTP request should specify the method (GET, POST, etc), the request path (always begins with a slash, part of the URI) and the HTTP version.
+Each other non-empty line starts with an HTTP header name, followed by a colon, a space, and then some string specifying a value for that header.
+Some HTTP headers are optional, and there is no specific order in general.
+A simple HTTP request may look like this:
+#+BEGIN_SRC text
+GET / HTTP/1.1
+Host: localhost:3490
+Connection: keep-alive
+Cache-Control: max-age=0
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.105 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+Sec-GPC: 1
+Sec-Fetch-Site: none
+Sec-Fetch-Mode: navigate
+Sec-Fetch-User: ?1
+Sec-Fetch-Dest: document
+Accept-Encoding: gzip, deflate, br
+Accept-Language: ja,en-US;q=0.9,en;q=0.8
+#+END_SRC
+
+ParseHTTPRequest() will try to parse up to 512 lines; if the incoming request is longer than that the server will pretend it's not valid.
+After separating the lines, ParseHTTPRequest has built a string array. It then loops through that array to treat each line in more detail.
+The first line is treated specially, where the program tries retrieve the method, path and version out of it.
+Among the HTTP headers, it tries to read the Host and the Authorization strings.
+The Host is considered to be mandatory, meaning that the request is considered invalid if it doesn't have a Host header.
+ParseHTTPRequest() returns an http_request structure which contains all the information you want out of the request:
+#+BEGIN_SRC c
+struct http_request
+{
+    http_method Method;
+    string RequestPath;
+    http_version HttpVersion;
+    string Host;
+    string AuthString;
+    b32 IsValid;
+};
+#+END_SRC
+AuthString comes from the optional Authorization header field. We support HTTP 1.1's Basic authentication framework, where the Authorization header can contain
+a base64-encoded representation (in ascii characters, meaning that each sextet is represented as a character,
+which for us is read as one byte, where only the low 6 bits are containing actual information)
+of a username and a password, the plain source format being: =user:password=
+
+Once we get the http_request structure, and it turns out that it's a valid request, we build CompletePath, a string of the file to load,
+based on the root folder of the websites specified by the config file, the incoming host name and the incoming relative request path.
+
+We call LoadHtpasswd to look for the file named .htpasswd which is the closest ancestor of the CompletePath filename, starting at the sibling level,
+making sure it is a strict child of the websites root folder.
+If that .htpasswd file exists, we consider the file to be protected, and we may or may not grant access.
+The return value of LoadHtpasswd() is an access_result enum value which encodes whether we grant access to the user or not.
+#+BEGIN_SRC c
+enum access_result
+{
+    AccessResult_Unauthorized,
+    AccessResult_Forbidden,
+    AccessResult_Granted,
+};
+#+END_SRC
+
+The behavior follows this table:
+|                | .htpasswd exists     | .htpasswd does not exist |
+|----------------+----------------------+--------------------------|
+| no auth string | unauthorized         | granted                  |
+| auth string    | forbidden or granted | granted                  |
+
+When both the .htpasswd file and the AuthString exist, we load the .htpasswd file to see whether there is a line that matches the decoded authstring.
+Before doing some comparison work, we have to decode the auth string to put in the same format as the .htpasswd lines. This is what DecodeAuthString() does:
+- Convert the entire AuthString from base64 characters to contiguous, unpadded sextets of decoded data. (e.g. 4 base-64 encoded characters will give 3 bytes of data)
+- Interpret that data as a string of 1-byte chars, and get PasswdPart, the part of the string after the first ':'.
+- Compute the MD5 hash of PasswdPart. (16 bytes result)
+- Convert the MD5 hash as a string of 32 readable ascii hexadecimal characters (0 to e, two hexits = 1 byte, print byte by byte in memory order)
+- Get the full decoded string which contains the username and the md5 password.
+
+we load the .htpasswd file, and as we parse it we see if there is a line of the form: =user:password_in_md5= which is identical to the decoded string.
+If so, then LoadHtpasswd returns AccessResult_Granded, otherwise it returns AccessResult_Forbidden.
+
+The HTTP response starts with one of these string constants defined in InitializeServerMemory():
+#+BEGIN_SRC c
+#define STRING_OK "HTTP/1.1 200 OK\r\n\r\n"
+#define STRING_BR "HTTP/1.1 400 Bad Request\r\n\r\n"
+#define STRING_NF "HTTP/1.1 404 Not Found\r\n\r\n"
+#define STRING_UN "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Access to the staging site\"\r\n\r\n"
+#define STRING_FB "HTTP/1.1 403 Forbidden\r\n\r\n"
+#+END_SRC
+
+If access result is unauthorized or forbidden, we just send 401 or 403.
+In the 401 case, the WWW-Authenticate header will allow the client browser to give a user and password prompt to send us another HTTP request with an Authorization header.
+When access should be granted, we try to load the file CompletePath. If we fail (due to not enough memory for loading the file, or OS failure, or the file doesn't exist),
+then we send the 404 response; otherwise we keep the 200 response.
+Bad Request is sent when the HTTP request we received is not considered valid in the first place.
+
+After calling send(), we call  HandleSendError() to check for errors, shut down the client socket with ShutdownConnection(),
+and call EndTaskWithMemory() to free the task slot and flush the scratch memory space.
+
+* InitializeServerMemory()
+InitializeServerMemory() is called once at server startup.
+What it does is
+- Initializes the state and the function pointer in server_memory
+- Initialize the arena in server_state
+- Calls ParseConfigFile() to parse the config file, which is assumed to be a sibling of the executable
+- Partition the remaining memory arena size into as many subarenas as there are threads, and initialize the task_with_memory structures.
+
+ParseConfigFile() is a lexeme/token-based parser implemented in server_config_loader.cpp.
+Some of the parsing information such as the parsed tokens will be printed at startup, indicating whether it has correctly parsed the file or not.
+The number of config file parsing errors gets hoisted up to the platform layer. If there is an error the server will not launch and the process will end.
+If you want a more fine-grained log of how the scanner treats the input file, you can uncomment some of the print calls in the source code.
+The config loader will try to get a websites root folder, used to access the files to serve, and a port number.
+
+* Is this robust?
+We wouldn't bet that you can't make it crash, or make it corrupt memory, especially if you have little memory space per thread and you uncomment a lot of log output. 
+Not so sure how the underlying socket APIs would hold up against stress tests either.
+Also, who knows what sort of things clients could send to us.
+We invested a decent amount of attention to handle some hostile cases, especially coming from the client, but never with the mindset of sitting down,
+taking each operation one by one, and ensuring "this will absolutely never cause us problems".
+That said, we believe the way we are conservative with our OS calls can resemble other security critical projects.
+
+On another note, we haven't used compiler fences for the multithreaded work queue.
+Compiler fences prevent the compiler from hoisting certain reads and stores out of certain blocks for optimization purposes.
+Sometimes the compiler may do so because it incorrectly assumes that some pieces of data are constant in a given sequence of instruction,
+when in fact another thread could modify that data at the same time.
+We haven't used compiler fences because he couldn't reason about how they could prevent problems in our situation, and we can't really take a conservative approach because
+- We couldn't precisely discriminate where fences are potentially useful, and we don't want to spam fences all over the multithreading code.
+- When we can, it is good to let the compiler reorder assembly code for optimization.
+We do use atomic operations, but those are a different thing.
+We haven't encountered any obvious problem but is something to keep in mind about the threaded code's robustness.
+
+* Is this fast?
+This is coded in C-style C++, the performance critical SendAndReceive() routine is multithreaded, and our OS calls are quite conservative,
+so it should be reasonably fast,
+but we haven't done any real optimization work beyond that.
+Some (relatively uneducated ?) thoughts if one were to rathole into this:
+- Profile it and see what is taking the most time. Stress tests
+- Are the socket system calls we are using actually the most suited for high performance work?
+- Can you vectorize some code? Maybe some of the string and parsing routines ?
+- Could we get some efficiency out of hashes (e.g. accelerating string comparisons when parsing HTTP request headers) ?
+- Could we prefetch web files into main memory instead of reloading from disk every time? Use an eviction scheme? How much do you care about updating the content?
+- Prescan the website folders and then hash the incoming request paths ? But again, how much do you care about updating the content?
+- What are you using to display/save stdout messages? A terminal? Is it slow?
+- Could you make a given core stick to one task slot if it has important cache implications?
+- Should you compress the data to send?
+- How much can you help the compiler?
+- Is there a more batch-oriented approach at some level which would yield an increased throughput?
+- What processor does this run on?
+
+* References and acknowledgements
+- Casey Muratori for his educational programming content (separating platform layers, memory techniques, multithreading, etc.)
+- Jacob Sorber: small HTTP demos in C on Unix 
+- http://www.craftinginterpreters.com for making a simple lexer (config file loader)
+- [[http://beej.us/guide/bgnet/][Beej's guide to network programming]] (Unix TCP server code)
+- [[http://docs.microsoft.com/en-us/windows/win32/winsock/complete-server-code][MSDN Winsock]] (Windows TCP server code)
+- http://www.en.wikipedia.org/wiki/MD5 pseudo-code MD5 implementation and some explanations
+- http://www.tools.ietf.org/html/rfc1321 MD5 spec, because I really needed some clearer information about how the bytes are ordered.
+- http://www.tools.ietf.org/html/rfc2616 HTTP/1.1 spec, for finding information about some HTTP headers
+- http://www.tools.ietf.org/html/rfc2617 Basic and Digest HTTP authentication
+- http://www.developer.mozilla.org/en-US/docs/Web/HTTP/Authentication Mozilla's page on HTTP authentication, has a nice client-server diagram
+- http://www.en.wikipedia.org/wiki/Base64 How base64 encoding works
+- http://base64decode.org for debugging and testing the base64 decoder
+- http://md5hashgenerator.com for debugging and testing the md5 hash
+  

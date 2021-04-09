@@ -3,9 +3,6 @@
 #include "md5_hash.cpp"
 #include "server_http_parsing.cpp"
 
-// TODO(vincent): Authentication
-// https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication
-// (probably done now?)
 // TODO(vincent): profiling? I'm curious to see what's slow
 // TODO(vincent): the bonus feature
 
@@ -27,7 +24,7 @@ InitializeServerMemory(server_memory *Memory, platform_work_queue *Queue,
                     (u8 *)Memory->Storage + sizeof(server_state));
     
     State->Queue = Queue;
-    State->PlatformAddEntry = PlatformAddEntry;
+    Memory->PlatformAddEntry = PlatformAddEntry;
     Memory->PlatformDoNextWorkEntry = PlatformDoNextWorkEntry;
     
     // NOTE(vincent): Load config file
@@ -283,126 +280,120 @@ PLATFORM_WORK_QUEUE_CALLBACK(ReceiveAndSend)
     u32 LengthToSend = 0;
     char *SendBuffer = 0;
     
-    for (;;)
+    char *ReceiveBuffer = PushArray(Arena, ReceiveBufferSize, char);
+    int BytesReceived = recv(ClientSocket, ReceiveBuffer, ReceiveBufferSize, 0);
+    
+    if (HandleReceiveError(BytesReceived, ClientSocket))
     {
-        char *ReceiveBuffer = PushArray(Arena, ReceiveBufferSize, char);
-        int BytesReceived = recv(ClientSocket, ReceiveBuffer, ReceiveBufferSize, 0);
+#if 1
+        // NOTE(vincent): Printing the bytes received in plain ascii, and in readable hexadecimal.
+        // If you enable this, make sure PrintBufferSize is big enough!
+        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "BytesReceived: ");
+        ToPrint.Length += SprintInt(PrintBuffer + ToPrint.Length, BytesReceived);
+        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
+#if 0
+        ToPrint.Length += SprintBounded(PrintBuffer + ToPrint.Length, ReceiveBuffer, BytesReceived);
+        ToPrint.Length += BinaryToHexadecimal(PrintBuffer + ToPrint.Length, ReceiveBuffer,
+                                              BytesReceived);
+        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
+#endif
+#endif
         
-        if (HandleReceiveError(BytesReceived, ClientSocket))
+        http_request Request = ParseHTTPRequest(ReceiveBuffer, BytesReceived);
+        if (Request.IsValid)
         {
 #if 1
-            // NOTE(vincent): Printing the bytes received in plain ascii, and in readable hexadecimal.
-            // If you enable this, make sure PrintBufferSize is big enough!
-            ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "BytesReceived: ");
-            ToPrint.Length += SprintInt(PrintBuffer + ToPrint.Length, BytesReceived);
+            ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "Isolated Request AuthString: ");
+            ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, Request.AuthString);
             ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
-#if 0
-            ToPrint.Length += SprintBounded(PrintBuffer + ToPrint.Length, ReceiveBuffer, BytesReceived);
-            ToPrint.Length += BinaryToHexadecimal(PrintBuffer + ToPrint.Length, ReceiveBuffer,
-                                                  BytesReceived);
+            
+            ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "Isolated Host string: ");
+            ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, Request.Host);
             ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
-#endif
 #endif
             
-            http_request Request = ParseHTTPRequest(ReceiveBuffer, BytesReceived);
-            if (Request.IsValid)
-            {
+            // TODO(vincent): maybe use Request.HttpVersion?
+            
+            // NOTE(vincent): Concatenate Root, Request.Host and Request.Path into the arena
 #if 1
-                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "Isolated Request AuthString: ");
-                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, Request.AuthString);
-                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
-                
-                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "Isolated Host string: ");
-                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, Request.Host);
-                ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
-#endif
-                
-                // TODO(vincent): maybe use Request.HttpVersion?
-                
-                // NOTE(vincent): Concatenate Root, Request.Host and Request.Path into the arena
-#if 1
-                // order of concatenation: root, slash, host, path
-                u32 RootLength = StringLength(Root);
-                u32 RequestLength = Request.RequestPath.Length;
-                u32 HostLength = Request.Host.Length;
-                u32 CompletePathLength = RootLength + 1 + HostLength + RequestLength;
-                string CompletePath = StringBaseLength(PushArray(Arena, CompletePathLength + 2, char),
-                                                       CompletePathLength);
-                SprintNoNull(CompletePath.Base, Root);
-                SprintNoNull(CompletePath.Base + RootLength, "/");
-                SprintNoNull(CompletePath.Base + RootLength + 1, Request.Host);
-                Sprint(CompletePath.Base + RootLength + 1 + HostLength, Request.RequestPath);
+            // order of concatenation: root, slash, host, path
+            u32 RootLength = StringLength(Root);
+            u32 RequestLength = Request.RequestPath.Length;
+            u32 HostLength = Request.Host.Length;
+            u32 CompletePathLength = RootLength + 1 + HostLength + RequestLength;
+            string CompletePath = StringBaseLength(PushArray(Arena, CompletePathLength + 2, char),
+                                                   CompletePathLength);
+            SprintNoNull(CompletePath.Base, Root);
+            SprintNoNull(CompletePath.Base + RootLength, "/");
+            SprintNoNull(CompletePath.Base + RootLength + 1, Request.Host);
+            Sprint(CompletePath.Base + RootLength + 1 + HostLength, Request.RequestPath);
 #else
-                // order of concatenation: root, path
-                u32 RootLength = StringLength(Root);
-                u32 RequestLength = Request.RequestPath.Length;
-                u32 CompletePathLength = RootLength + RequestLength;
-                string CompletePath = StringBaseLength(PushArray(Arena, CompletePathLength + 1, char),
-                                                       CompletePathLength);
-                SprintNoNull(CompletePath.Base, Root);
-                Sprint(CompletePath.Base + RootLength, Request.RequestPath);
+            // order of concatenation: root, path
+            u32 RootLength = StringLength(Root);
+            u32 RequestLength = Request.RequestPath.Length;
+            u32 CompletePathLength = RootLength + RequestLength;
+            string CompletePath = StringBaseLength(PushArray(Arena, CompletePathLength + 1, char),
+                                                   CompletePathLength);
+            SprintNoNull(CompletePath.Base, Root);
+            Sprint(CompletePath.Base + RootLength, Request.RequestPath);
 #endif
-                // NOTE(vincent): Check for Htpasswd file and get access result
-                access_result AccessResult = 
-                    LoadHtpasswd(Arena, CompletePath, RootLength, Request.AuthString);
-                
-                
-                switch (AccessResult)
-                {
-                    case AccessResult_Unauthorized:
-                    {
-                        //ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: UNAUTHORIZED\n");
-                        LengthToSend = sizeof(STRING_UN) - 1;
-                        SendBuffer = PushArray(Arena, LengthToSend, char);
-                        SprintNoNull(SendBuffer, StringUN);
-                    } break;
-                    case AccessResult_Forbidden:
-                    {
-                        //ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: FORBIDDEN\n");
-                        LengthToSend = sizeof(STRING_FB) - 1;
-                        SendBuffer = PushArray(Arena, LengthToSend, char);
-                        SprintNoNull(SendBuffer, StringFB);
-                    } break;
-                    case AccessResult_Granted:
-                    {
-                        //ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: GRANTED\n");
-                        SendBuffer = PushArray(Arena, sizeof(STRING_OK)-1, char);
-                        SprintNoNull(SendBuffer, StringOK);
-                        
-                        // NOTE(vincent): Try to load the file
-                        push_read_entire_file ReadFileResult =
-                            PushReadEntireFile(Arena, CompletePath.Base);
-                        
-                        if (ReadFileResult.Success)
-                        {
-                            // 200 OK
-                            LengthToSend = (sizeof(STRING_OK) - 1) + (u32)ReadFileResult.Size;
-                        }
-                        else
-                        {
-                            // 404 Not Found
-                            LengthToSend = sizeof(STRING_NF) - 1;
-                            SprintNoNull(SendBuffer, StringNF);
-                        }
-                    } break;
-                }
-            }
-            else
-            {
-                // 400 Bad Request
-                LengthToSend = sizeof(STRING_BR) - 1;
-                SendBuffer = PushArray(Arena, LengthToSend, char);
-                SprintNoNull(SendBuffer, StringBR);
-            }
+            // NOTE(vincent): Check for Htpasswd file and get access result
+            access_result AccessResult = 
+                LoadHtpasswd(Arena, CompletePath, RootLength, Request.AuthString);
             
-            ToPrint.Length +=
-                SprintUntilDelimiter(PrintBuffer + ToPrint.Length, ReceiveBuffer, '\r');
-            ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
-            break;
-        } // END if (HandleReceiveError(BytesReceived))
+            
+            switch (AccessResult)
+            {
+                case AccessResult_Unauthorized:
+                {
+                    //ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: UNAUTHORIZED\n");
+                    LengthToSend = sizeof(STRING_UN) - 1;
+                    SendBuffer = PushArray(Arena, LengthToSend, char);
+                    SprintNoNull(SendBuffer, StringUN);
+                } break;
+                case AccessResult_Forbidden:
+                {
+                    //ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: FORBIDDEN\n");
+                    LengthToSend = sizeof(STRING_FB) - 1;
+                    SendBuffer = PushArray(Arena, LengthToSend, char);
+                    SprintNoNull(SendBuffer, StringFB);
+                } break;
+                case AccessResult_Granted:
+                {
+                    //ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "RESULT: GRANTED\n");
+                    SendBuffer = PushArray(Arena, sizeof(STRING_OK)-1, char);
+                    SprintNoNull(SendBuffer, StringOK);
+                    
+                    // NOTE(vincent): Try to load the file
+                    push_read_entire_file ReadFileResult =
+                        PushReadEntireFile(Arena, CompletePath.Base);
+                    
+                    if (ReadFileResult.Success)
+                    {
+                        // 200 OK
+                        LengthToSend = (sizeof(STRING_OK) - 1) + (u32)ReadFileResult.Size;
+                    }
+                    else
+                    {
+                        // 404 Not Found
+                        LengthToSend = sizeof(STRING_NF) - 1;
+                        SprintNoNull(SendBuffer, StringNF);
+                    }
+                } break;
+            }
+        } // END if (Request.IsValid)
         else
-            break;
-    } // END for (;;)
+        {
+            // 400 Bad Request
+            LengthToSend = sizeof(STRING_BR) - 1;
+            SendBuffer = PushArray(Arena, LengthToSend, char);
+            SprintNoNull(SendBuffer, StringBR);
+        }
+        
+        ToPrint.Length +=
+            SprintUntilDelimiter(PrintBuffer + ToPrint.Length, ReceiveBuffer, '\r');
+        ToPrint.Length += Sprint(PrintBuffer + ToPrint.Length, "\n");
+    } // END if (HandleReceiveError(BytesReceived))
     
     
     int BytesSent = send(ClientSocket, SendBuffer, LengthToSend, 0);
@@ -448,7 +439,7 @@ PrepareHandshaking(server_memory *Memory, struct sockaddr *IncomingAddress, SOCK
     Work->ClientSocket = ClientSocket;
     Work->Task = Task;
     Work->State = State;
-    State->PlatformAddEntry(Queue, ReceiveAndSend, Work);
+    Memory->PlatformAddEntry(Queue, ReceiveAndSend, Work);
     if (Task->Index == ArrayCount(State->Tasks)-1)
         Memory->PlatformDoNextWorkEntry(Queue); // Main thread gets to do queue work
     

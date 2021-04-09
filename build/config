@@ -3,5 +3,5 @@
 // port:80
 // root:"websites"
 
-port:3490
+port:80
 root:"websites"

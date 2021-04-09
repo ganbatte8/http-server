@@ -20,6 +20,5 @@ struct server_state
     char *StringFB;
     task_with_memory Tasks[NUMBER_OF_THREADS];
     platform_work_queue *Queue;
-    platform_add_entry *PlatformAddEntry;
 };
 

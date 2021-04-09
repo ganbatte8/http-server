@@ -79,7 +79,7 @@ ScannerPeek(push_read_entire_file Source, scanner_location *Scanner)
 internal void
 ScanString(push_read_entire_file Source, scanner_location *Scanner, parsed_config_tokens *Tokens)
 {
-    printf("ScanString: (%u, %u)\n", Scanner->Row, Scanner->Column);
+    //printf("ScanString: (%u, %u)\n", Scanner->Row, Scanner->Column);
     while (ScannerPeek(Source, Scanner) != '"' && Scanner->Current < Source.Size)
     {
         if (ScannerPeek(Source, Scanner) == '\n') 
@@ -196,7 +196,7 @@ ScanToken(push_read_entire_file Source, scanner_location *Scanner, parsed_config
             {
                 Scanner->Current++;
             }
-            printf("Scanning: Slash (%u, %u)\n", Scanner->Row, Scanner->Column);
+            //printf("Scanning: Slash (%u, %u)\n", Scanner->Row, Scanner->Column);
         }
         break;
         
@@ -209,7 +209,7 @@ ScanToken(push_read_entire_file Source, scanner_location *Scanner, parsed_config
         case '\n':
         Scanner->Row++;
         Scanner->Column = 1;
-        printf("Scanning: Linefeed (%u, %u)\n", Scanner->Row, Scanner->Column);
+        //printf("Scanning: Linefeed (%u, %u)\n", Scanner->Row, Scanner->Column);
         break;
         
         case '"':

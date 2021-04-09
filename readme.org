@@ -1,14 +1,31 @@
 * This project
-  This is a simple web server implemented in C-style C++, no libraries.
-  Target platforms are Linux and Windows. There is a chance the Linux port also works on other Unix platforms.
+  This is a simple HTTP server implemented in C-style C++, relying on no libraries (besides a few standard library functions like fopen and printf).
+  It was made for a school project and for personal insight.
+  Target platforms are Linux (GCC) and Windows (MSVC).
+  Because of how system calls tend to be similar across Unix-based OSes, there is some likelihood the Linux platform layer works fine on other Unix systems.
+  
+  Features:
+  - GET request handling, other methods are ignored
+  - Multithreaded work queue, single producer multiple consumer. Each handshake is a work queue entry.
+  - Outputs the client's IP and request on stdout.
+  - Small config file with a token/lexeme-based parser, storing the server port (80 by default) and the root folder path of websites to host.
+  - Multisite: The Host HTTP request header is taken into account to determine files to load.
+  - Some recreative use of the HTTP 1.1 Basic authentication framework, involving a base64 decoder and an MD5 hash implementation.
+  - Two documentation files (this one: readme.org and src/doc.org)
 
+* Bonus - not done yet
+- implement one of these bonus functionalities:
+  - handle server-side includes (#include, #exec)
+  - generate dynamic content with an external program (php/python/node)
+  - handle folders listing (config should allow the user to disable this)
+  - compress js and css resources in gzip
 * How to compile
 ** Windows
 We use Microsoft's C/C++ compiler MSVC. 
 You can install Microsoft's compiler by installing Visual Studio.
 The community edition should work fine.
 Once you've installed Visual Studio, launch a terminal.
-You want to look for the vcvarsall.bat file and run it with the argument x64
+You want to look for the vcvarsall.bat file and run it *with the argument: x64*
 (if you want to use the 64-bit compiler).
 The path to this file will probably look like this:
 =C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat=
@@ -21,6 +38,7 @@ cd src
 build.bat
 #+END_SRC
 
+** A more automated build setup for development
 To automate this process of running vcvarsall.bat for development, 
 you can make a shell.bat file that contains this instruction:
 #+BEGIN_SRC bat
@@ -56,37 +74,76 @@ The executable should be either called server_win32.exe (for Windows) or server_
 When you run the executable, it first tries to parse the config file located in the same folder as the
  executable, so that it retrieves a port number and the root folder path of your websites to host.
 If successful, you should then be able to have your website show up in a browser.
-For example, if you set the port to 3490, and you have an index.html file in your root website folder,
-you should be able to display it in a web browser by typing the URL:
-#+BEGIN_SRC
-localhost:3490/index.html
+
+** Testing in a web browser with multisite (and dealing with the hosts file)
+When you enter a URL in a web browser, it will typically ask a DNS server for converting a domain name to an IP address.
+But before the browser does that, it will look up for the OS's hosts file, which contains a textual table mapping host names to addresses.
+You can edit that Hosts file to map the host name to your local address. For example, on Linux I have the =/etc/hosts= file which contains the following line:
+#+BEGIN_SRC text
+127.0.0.1 localhost verti dopetrope
 #+END_SRC
 
+This way, I can type this URL in a web browser:
+#+BEGIN_SRC
+http://verti/index.html
+#+END_SRC
+and the browser will send an HTTP request to my local address, port 80, with the Host header set to verti, and the request path set to /index.html.
+It will do so without sending a DNS request.
 
+On Windows 10, the hosts file is located in =C:\Windows\System32\drivers\etc=.
+
+If changing the hosts file doesn't seem to work, try restarting the web browser.
+
+** Testing in a web browser without multisite
+Look for this piece of code in src/server.cpp:
+#+BEGIN_SRC c
+#if 1
+    // order of concatenation: root, slash, host, path
+    u32 RootLength = StringLength(Root);
+    u32 RequestLength = Request.RequestPath.Length;
+    u32 HostLength = Request.Host.Length;
+    u32 CompletePathLength = RootLength + 1 + HostLength + RequestLength;
+    string CompletePath = StringBaseLength(PushArray(Arena, CompletePathLength + 2, char),
+                                            CompletePathLength);
+    SprintNoNull(CompletePath.Base, Root);
+    SprintNoNull(CompletePath.Base + RootLength, "/");
+    SprintNoNull(CompletePath.Base + RootLength + 1, Request.Host);
+    Sprint(CompletePath.Base + RootLength + 1 + HostLength, Request.RequestPath);
+#else
+    // order of concatenation: root, path
+    u32 RootLength = StringLength(Root);
+    u32 RequestLength = Request.RequestPath.Length;
+    u32 CompletePathLength = RootLength + RequestLength;
+    string CompletePath = StringBaseLength(PushArray(Arena, CompletePathLength + 1, char),
+                                            CompletePathLength);
+    SprintNoNull(CompletePath.Base, Root);
+    Sprint(CompletePath.Base + RootLength, Request.RequestPath);
+#endif
+#+END_SRC
+
+Replace the =#if 1= with =#if 0=. Recompile.
+Launch the server and you should be able to run one of the verti example website by entering a URL like this in a web browser,
+assuming the port is 80 and localhost is mapped to you local address -- which it should be by default:
+#+BEGIN_SRC text
+http://localhost/verti/index.html
+#+END_SRC
+
+** If the OS won't let the server listen to port 80
+You can run the executable as an administrator / super user.
+You can also try setting a different port number in the config file, but then you need to have the HTTP clients send the requests to that port.
+
+** .htpasswd files and Basic authentication.
+You can protect a resource file (an entire subtree of directories, in fact) by creating a .htpasswd file at the root level of that subtree. Siblings are included in the protection range. The .htpasswd file may contain lines of the form:
+#+BEGIN_SRC text
+user:password_in_md5
+#+END_SRC
+When a client tries to access a protected file, it will be asked for a user and password.
+The user:password data from the client is sent in a base64 encoded format, in clear.
+This is not an encrypted format: base64 is easily reversible, which is why you probably don't want to use this authentication framework for anything serious.
+When that data is received by the server, it is decoded back and the password is converted to an MD5 hash of itself, so that it can be compared with .htpasswd
+entries. When there is a match, access is granted. See src/doc.org for a more in-depth explanation of the implementation.
    
 
-* Should be done
-- Handle GET request in HTTP/1.x, ignore the others methods like PUT, etc.
-- Correctly display the given websites
-- should be able to handle connections in parallel (e.g. 1 thread = 1 connection ?)
-- stdout log: caller's IP + request
-- externalize config in a properties file
-  root folder where to put the websites, TCP port (80 by default)
-- make sure there is no blocking (disk I/O or listening to network) call inside of the server loop
-  that is not handled in a parallel way. (producer/consumer ?)
-  NOTE: Currently, main thread is only blocked by accept(). Other threads are "blocked" by file reads.
-
-* Not done yet
-- good doc and comments
-- should be able to host several domain names (multisite)
-- should protect a folder if it contains a .htpasswd file
-  that file contains lines in the form    username:password_in_md5
-
-- implement one of these bonus functionalities:
-  - handle server-side includes (#include, #exec)
-  - generate dynamic content with an external program (php/python/node)
-  - handle folders listing (config should allow the user to disable this)
-  - compress js and css resources in gzip
 
 
 

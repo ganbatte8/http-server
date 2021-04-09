@@ -24,8 +24,6 @@
 
 struct platform_work_queue
 {
-    //u32 volatile CompletionGoal;
-    //u32 volatile CompletionCount;
     u32 volatile NextEntryToWrite;
     u32 volatile NextEntryToRead;
     HANDLE SemaphoreHandle;
@@ -43,7 +41,6 @@ Win32AddEntry(platform_work_queue *Queue, platform_work_queue_callback *Callback
         platform_work_queue_entry *Entry = Queue->Entries + Queue->NextEntryToWrite;
         Entry->Callback = Callback;
         Entry->Data = Data;
-        //++Queue->CompletionGoal;
         //_WriteBarrier(); // TODO(vincent): hmmmm... why would you use that?
         Queue->NextEntryToWrite = NewNextEntryToWrite;
         // increase semaphore count so a thread can wake up
@@ -86,19 +83,6 @@ Win32DoNextWorkQueueEntry(platform_work_queue *Queue)
     return WeShouldSleep;
 }
 
-#if 0 
-internal void
-Win32CompleteAllWork(platform_work_queue *Queue)
-{
-    while (Queue->CompletionGoal != Queue->CompletionCount)
-    {
-        Win32DoNextWorkQueueEntry(Queue);
-    }
-    Queue->CompletionGoal = 0;
-    Queue->CompletionCount = 0;
-}
-#endif 
-
 DWORD WINAPI
 ThreadProc(LPVOID lpParameter)
 {
@@ -112,12 +96,9 @@ ThreadProc(LPVOID lpParameter)
     }
 }
 
-// TODO(vincent): Call this. 4 threads ? Can the main thread do some queue work itself ? Should it ?
 internal void
 Win32MakeQueue(platform_work_queue *Queue, u32 ThreadCount)
 {
-    //Queue->CompletionGoal = 0;
-    //Queue->CompletionCount = 0;
     Queue->NextEntryToWrite = 0;
     Queue->NextEntryToRead = 0;
     u32 InitialCount = 0;
@@ -129,7 +110,6 @@ Win32MakeQueue(platform_work_queue *Queue, u32 ThreadCount)
         CloseHandle(ThreadHandle);
     }
 }
-
 
 internal b32
 HandleReceiveError(int BytesReceived, SOCKET ClientSocket)
@@ -164,7 +144,6 @@ ShutdownConnection(SOCKET ClientSocket)
 {
     // shutdown the send half of the connection since no more data will be sent
     int ShutdownResult = shutdown(ClientSocket, SD_SEND);
-    
     if (ShutdownResult == SOCKET_ERROR) 
     {
         //printf("shutdown failed: %d\n", WSAGetLastError());
@@ -264,7 +243,7 @@ int main()
         struct sockaddr_storage TheirAddress; // connector's address information
         int SizeTheirAddress = sizeof(TheirAddress);
         printf("\nServer: waiting for a connection on port %s\n", InitResult.PortString);
-        u32 RequestsCount = 0;
+        
         for (;;)
         {
             // Accept a client socket
@@ -280,9 +259,6 @@ int main()
             }
             else
                 PrepareHandshaking(&ServerMemory, (struct sockaddr *)&TheirAddress, ClientSocket, &Queue);
-            
-            RequestsCount++;
-            //printf("%u requests\n", RequestsCount); 
         }
         
         //WSACleanup(); 

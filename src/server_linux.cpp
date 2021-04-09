@@ -110,9 +110,6 @@ HandleReceiveError(int BytesReceived, SOCKET ClientSocket)
     if (BytesReceived < 0)
     {
         perror("recv failed");
-        // TODO(vincent): Now that I think about it, perror() might not be thread-safe,
-        // because it uses some global variable iirc.
-        // not sure if we care very much though.
         Success = false;
     }
     return Success;

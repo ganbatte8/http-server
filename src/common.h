@@ -157,12 +157,13 @@ SubArena(memory_arena *Result, memory_arena *Arena, u32 Size)
     Result->TempCount = 0;
 }
 
-// NOTE(vincent): forward declaring three functions that the server code needs 
-// and that the platform layer has to implement:
 #if COMPILER_GCC
 typedef int SOCKET;        // This is to make the Linux platform "understand" this Windows type
 #define INVALID_SOCKET -1  // Same
 #endif
+
+// NOTE(vincent): forward declaring three functions that the server code needs 
+// and that the platform layer has to implement:
 internal b32 HandleReceiveError(int BytesReceived, SOCKET ClientSocket);
 internal b32 HandleSendError(int BytesSent, SOCKET ClientSocket);
 internal void ShutdownConnection(SOCKET ClientSocket);
@@ -626,4 +627,36 @@ struct initialize_server_memory_result
     char *PortString;
 };
 
-#include "file_api.cpp"
+
+struct push_read_entire_file
+{
+    char *Memory;
+    size_t Size;
+    b32 Success;
+};
+internal push_read_entire_file
+PushReadEntireFile(memory_arena *Arena, char *Filename)
+{
+    push_read_entire_file Result = {};
+    
+    FILE *File = fopen(Filename, "rb");
+    if (File)
+    {
+        fseek(File, 0, SEEK_END);
+        Result.Size = ftell(File);
+        fseek(File, 0, SEEK_SET);
+        u32 AvailableSize = Arena->Size - Arena->Used;
+        if (Result.Size <= AvailableSize)
+        {
+            Result.Memory = PushArray(Arena, (u32)Result.Size, char);
+            size_t BytesWritten = fread(Result.Memory, 1, Result.Size, File);
+            if (BytesWritten == Result.Size)
+                Result.Success = true;
+        }
+        fclose(File);
+        // NOTE(vincent): Fun fact: I had forgotten to put fclose() here. The result was that
+        // when you keep reloading the same page after a certain number of times,
+        // the server would return 404 errors exclusively.
+    }
+    return Result;
+}
