@@ -440,7 +440,10 @@ PrepareHandshaking(server_memory *Memory, struct sockaddr *IncomingAddress, SOCK
     Work->Task = Task;
     Work->State = State;
     Memory->PlatformAddEntry(Queue, ReceiveAndSend, Work);
+    
+    // NOTE(vincent): Not necessarily a good idea to have the main thread do work 
+    // instead of producing work entries, but this is a way you could do it:
     if (Task->Index == ArrayCount(State->Tasks)-1)
-        Memory->PlatformDoNextWorkEntry(Queue); // Main thread gets to do queue work
+        Memory->PlatformDoNextWorkEntry(Queue);
     
 }

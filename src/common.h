@@ -357,6 +357,18 @@ StringLength(char *String)
     return Count;
 }
 
+internal b32
+StringsAreEqual(char *A, char *B)
+{
+    while (*A)
+    {
+        if (*B != *A)
+            return false;
+        A++;
+        B++;
+    }
+    return *A == *B;
+}
 
 internal b32
 StringsAreEqual(string A, const char *B)

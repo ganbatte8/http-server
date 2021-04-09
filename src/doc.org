@@ -142,6 +142,10 @@ You want to make sure that the lifetime of the memory you pass to PlatformAddEnt
 so the worker who retrieves the work entry off the queue can still use that data to do the work when the work producing thread leaves PrepareHandshaking().
 
 The sole reason to expose PlatformDoNextWorkEntry() to the platform-independent layer is to give an opportunity to the main thread to do queue work in case all other threads are busy.
+Note that this is not necessarily a good idea. What if the main thread gets a huge work entry to do ? What if all other threads are immediately available after
+the main thread started a work entry? Then all other threads would have to wait for a while for the main thread to produce a new work entry.
+If your processor has 2 cores then you should probably have the main thread do work, but with 64 cores you definitely don't want to distract the main thread
+from producing work entries.
 
 ** Platform layer: creating the queue and the threads
 The first thing that the platform layer does is instantiate a platform_work_queue, then initialize it and create the threads with MakeQueue().

@@ -206,6 +206,9 @@ int main(void)
         if (P == 0)  
         {
             fprintf(stderr, "failed to bind\n");
+            if (StringsAreEqual(InitResult.PortString, "80"))
+                printf("Port is 80, maybe the OS is keeping you from listening to that port?" 
+                       " Try sudo\n");
             exit(1);
         }
         
