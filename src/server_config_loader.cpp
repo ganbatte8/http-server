@@ -162,12 +162,12 @@ ScanIdentifier(push_read_entire_file Source, scanner_location *Scanner,
     
     if (StringsAreEqual(Identifier, "port"))
     {
-        printf("ScanIdentifier port: (%u, %u)\n", Scanner->Row, Scanner->Column);
+        //printf("ScanIdentifier port: (%u, %u)\n", Scanner->Row, Scanner->Column);
         AddToken(Source, Scanner, Tokens, TokenHint(ConfigTokenType_Port, 0));
     }
     else if (StringsAreEqual(Identifier, "root"))
     {
-        printf("ScanIdentifier root: (%u, %u)\n", Scanner->Row, Scanner->Column);
+        //printf("ScanIdentifier root: (%u, %u)\n", Scanner->Row, Scanner->Column);
         AddToken(Source, Scanner, Tokens, TokenHint(ConfigTokenType_Root, 0));
     }
     else
