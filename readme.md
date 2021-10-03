@@ -179,6 +179,7 @@ The OS layer:
 - sets up a TCP socket to listen to as a server
 - calls the app layer once at initialization, and once per TCP connection
 - simply put, its job is to do all the work that requires OS-dependent code
+
 The application layer:
 - is made to be as platform-independent as possible (given that we are targetting x64 Linux and Windows)
 - is where all the HTTP logic beyond TCP happens
