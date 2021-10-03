@@ -214,8 +214,8 @@ I did make it work on Arch Linux though. Multisite can be toggled by changing a 
 
 ### Aside: reasons HTTP sucks (imo)
 
-- It forces the implementer to use TCP. Some use cases would work fine with UDP alone, which would be faster and have a much simpler implementation.
-Custom TCP could be implemented on top of UDP if the need arised. (This is mostly second-hand knowledge, I haven't toyed much with UDP/TCP yet).
+- It forces the implementer to use TCP. Some use cases would work fine with UDP alone, which is faster and has much simpler usage code.
+Custom TCP could be implemented on top of UDP if the need arised (this is mostly second-hand knowledge, I haven't toyed much with UDP/TCP yet).
 
 - Like many other specs, it is open-ended and tries too hard to be generic, which introduces a lot of complexity for arguably not much benefit.
 It makes it very hard for the implementer to cover all cases correctly and be fully compliant. 
@@ -230,7 +230,7 @@ You wouldn't have to read and interpret many chars to even know which header you
 Additionally, most HTTP headers are not required to be in a specific order, which means you can't predict which one will come next.
 Performance overhead is probably even worse for HTML/CSS/JS: It all has to go through the network and has to be reinterpreted.
 The fact that the web pioneers decided to use this format, which is inefficient for computers and inconvenient for programmers,
-seems a little ridiculous and unbelievable given how much slower hardware used to be back then, 
+seems a little ridiculous and unbelievable considering how much slower hardware used to be back then, 
 but it is what web programmers have to work with, and what a billion users have to put up with.
 
 
