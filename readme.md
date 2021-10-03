@@ -11,6 +11,21 @@ Although I tried to make sensible decisions along the way, it was never really i
 It would also have conflicted with some of the requested features of the assignment.
 
 
+## Features
+- GET request handling. Other HTTP methods are ignored.
+- Multithreaded connections was a required feature. Each TCP connection runs on its own separate thread. 
+Main thread produces job entries, other threads consume job entries. Jobs are stored in a circular buffer. 
+Number of created threads is hard-coded; when in doubt set it to the number of cores on the machine.
+Each running job is given a memory arena (piece of memory with bump allocator system) to work with.
+- By request, the client's IP and the request header are sent through stdout. 
+If you run this server in a terminal, know that the terminal's runtime (rendering, parsing etc.) might be the slowest part.
+- By request, a small config file is used to set the server port (80 by default) and the root folder path of websites to host.
+- As requested, multisite support: the Host HTTP request header is taken into account to determine which files to load.
+- By request, you can put a .htpasswd file in a folder to lock the folder tree. When an HTTP request tries to pull a locked file, 
+the browser will prompt the client for a username and password, which it will send back to the server in a base64-encoded format
+(that's the HTTP/1.1 basic authentication framework). The server then looks for an htpasswd file containing the username in plain text, and 
+an MD5 hash of the password.
+
 
 # Compiling
 ## Windows
@@ -24,7 +39,7 @@ The path to this file will probably look like this:
 ```
 C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat
 ```
-     
+
 Once you've run the vcvarsall.bat file, then _in that shell session_, 
 you should be able to run the build.bat file contained in the source folder, from the terminal. 
 That will compile the program into the build folder.
@@ -70,21 +85,6 @@ When you run the executable, it first tries to parse the config file located in 
  executable, so that it retrieves a port number and the root folder path of your websites to host.
 If successful, you should then be able to have your website show up in a browser.
 
-
-## Features
-- GET request handling. Other HTTP methods are ignored.
-- Multithreaded connections was a required feature. Each TCP connection runs on its own separate thread. 
-Main thread produces job entries, other threads consume job entries. Jobs are stored in a circular buffer. 
-Number of created threads is hard-coded; when in doubt set it to the number of cores on the machine.
-Each running job is given a memory arena (piece of memory with bump allocator system) to work with.
-- By request, the client's IP and the request header are sent through stdout. 
-If you run this server in a terminal, know that the terminal's runtime (rendering, parsing etc.) might be the slowest part.
-- By request, a small config file is used to set the server port (80 by default) and the root folder path of websites to host.
-- As requested, multisite support: the Host HTTP request header is taken into account to determine which files to load.
-- By request, you can put a .htpasswd file in a folder to lock the folder tree. When an HTTP request tries to pull a locked file, 
-the browser will prompt the client for a username and password, which it will send back to the server in a base64-encoded format
-(that's the HTTP/1.1 basic authentication framework). The server then looks for an htpasswd file containing the username in plain text, and 
-an MD5 hash of the password.
 
 
 ## Testing in a web browser with multisite (and dealing with the hosts file)
