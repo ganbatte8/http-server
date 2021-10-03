@@ -154,8 +154,42 @@ When a client tries to access a protected file, they will be asked for a user an
 The user:password data from the client is sent in a base64 encoded format, in clear.
 This is not an encrypted format: base64 is easily reversible, which is why you probably don't want to use this authentication framework for anything serious.
 When that data is received by the server, it is decoded back and the password is converted to an MD5 hash of itself, so that it can be compared with .htpasswd
-entries. When there is a match, access is granted. See src/doc.org for a more in-depth explanation of the implementation.
+entries. When there is a match, access is granted. See src/doc.org for a more in-depth explanation of the implementation, or preferably read the implementation itself.
    
+
+# Brief architecture explanation
+I was supposed to make documentation for this server, even though it's not really an API and the code is self-documenting for the most part.
+I wrote and pushed a detailed walkthrough of the code in the past,
+but my teacher's reaction back then suggests that he didn't read or understand the first sentence.
+I also disliked the level of detail because it was a bit of a time sink, I found that I was rambling and basically repeating myself, 
+and it just distracts the reader from reading the source code which, if you ignore the comments, is the ultimate truth in terms of the behavior of the program.
+So I'm replacing that with a more concise, high-level review here. 
+
+First it should be noted that this is a unity build. In a traditional C++ project you typically compile each .cpp file into an intermediate .obj file and the .obj files are then linked together to produce the executable.
+Here we don't do that. There is only a single conceptual file, made of several .cpp and .h files (the extensions don't really matter), patched together by #includes, and we produce a single executable out of that file. 
+There is no linking process except potentially for fetching syscalls and stdio implementations.
+
+Secondly, there are two conceptual layers to the source code: platform-dependent or OS layer, and platform-independent or app layer.
+The OS layer:
+- depends on the target platform (Windows or Linux)
+- includes common.h
+- contains the entry point main()
+- implements a thread job queue and creates some threads
+- asks the OS for a block of memory, once and for all
+- sets up a TCP socket to listen to as a server
+- calls the app layer once at initialization, and once per TCP connection
+- simply put, its job is to do all the work that requires OS-dependent code
+The application layer:
+- is made to be as platform-independent as possible (given that we are targetting x64 Linux and Windows)
+- is where all the HTTP logic beyond TCP happens
+- is mostly implemented by server.cpp
+- has two conceptual entry points called by the OS layer: InitializeServerMemory() and PrepareHandshaking()
+- at initialization, it reads and parses the config file, and partitions the memory for the workers, among other things
+
+You can check out my previous explanation in src/doc.org if you want more details, but I'd rather encourage you to read the source code, I think.
+
+
+
 
 ## Some issues
 ### Performance
