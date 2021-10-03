@@ -21,7 +21,9 @@ Once you've installed Visual Studio, launch a terminal.
 You want to look for the vcvarsall.bat file and run it *with the argument: x64*
 (if you want to use the 64-bit compiler).
 The path to this file will probably look like this:
-=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat=
+```
+C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat
+```
      
 Once you've run the vcvarsall.bat file, then _in that shell session_, 
 you should be able to run the build.bat file contained in the source folder, from the terminal. 
@@ -88,7 +90,7 @@ an MD5 hash of the password.
 ## Testing in a web browser with multisite (and dealing with the hosts file)
 When you enter a URL in a web browser, it will typically ask a DNS server for converting a domain name to an IP address.
 But before the browser does that, it will look up for the OS's hosts file, which contains a table mapping host names to addresses in plain text.
-You can edit that Hosts file to map the host name to your local address. For example, on Linux I have the =/etc/hosts= file which contains the following line:
+You can edit that Hosts file to map the host name to your local address. For example, on Linux I have the /etc/hosts file which contains the following line:
 ```
 127.0.0.1 localhost verti dopetrope
 ```
@@ -100,7 +102,7 @@ http://verti/index.html
 and the browser will send an HTTP request to my local address, port 80, with the Host header set to verti, and the request path set to /index.html.
 It will do so without sending a DNS request.
 
-On Windows 10, the hosts file is located in =C:\Windows\System32\drivers\etc=.
+On Windows 10, the hosts file is located in ```C:\Windows\System32\drivers\etc```.
 
 If changing the hosts file doesn't seem to work, try restarting the web browser.
 
@@ -131,7 +133,7 @@ Look for this piece of code in src/server.cpp:
 #endif
 ```
 
-Replace the =#if 1= with =#if 0=. Recompile.
+Replace #if 1 with #if 0. Recompile.
 Launch the server and you should be able to run one of the verti example website by entering a URL like this in a web browser,
 assuming the port is 80 and localhost is mapped to you local address -- which it should be by default:
 ```
@@ -175,7 +177,7 @@ Furthermore, the model of using a .htpasswd file for each folder tree seems jank
 - Multisite works in theory, but I couldn't get it to work on my Windows setup (could be a problem with my hosts file?). 
 I did make it work on Arch Linux though. Multisite can be toggled by changing a character in the source code.
 
-### Aside: reasons HTTP suck (imo)
+### Aside: reasons HTTP sucks (imo)
 
 - It forces the implementer to use TCP. Some use cases would work fine with UDP alone, which would be faster and have a much simpler implementation.
 Custom TCP could be implemented on top of UDP if the need arised. (This is mostly second-hand knowledge, I haven't toyed much with UDP/TCP yet).
